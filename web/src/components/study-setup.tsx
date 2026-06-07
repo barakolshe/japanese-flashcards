@@ -1,6 +1,10 @@
 "use client";
 
-import { folderNames, type Flashcard } from "@/lib/flashcards";
+import {
+  folderNames,
+  serializeFlashcardsCsv,
+  type Flashcard,
+} from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 
 type StudySetupProps = {
@@ -8,11 +12,30 @@ type StudySetupProps = {
   onStart: (folder: string | null) => void;
 };
 
+const EXPORT_FILENAME = "flashcards.csv";
+
 function folderCounts(cards: Flashcard[]): { folder: string; count: number }[] {
   return folderNames(cards).map((folder) => ({
     folder,
     count: cards.filter((card) => card.folder === folder).length,
   }));
+}
+
+/**
+ * Download the deck as a CSV file. A leading BOM keeps the Japanese readable
+ * when the file is opened in Excel; PapaParse strips it again on re-upload.
+ */
+function downloadDeckCsv(cards: Flashcard[]) {
+  const csv = serializeFlashcardsCsv(cards);
+  const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = EXPORT_FILENAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function StudySetup({ onStart }: StudySetupProps) {
@@ -24,18 +47,28 @@ export function StudySetup({ onStart }: StudySetupProps) {
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
       <style>{`@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }`}</style>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h2 className="flex items-center gap-2.5 text-2xl font-semibold text-ink">
           <span aria-hidden className="size-2.5 rounded-full bg-accent" />
           {cards.length} card{cards.length > 1 ? "s" : ""} ready
         </h2>
-        <button
-          type="button"
-          onClick={clear}
-          className="rounded-lg px-2 py-1 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          Load a different file
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => downloadDeckCsv(cards)}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-ink/30 hover:bg-ink/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <DownloadIcon />
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={clear}
+            className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            Load a different file
+          </button>
+        </div>
       </div>
 
       <button
@@ -68,5 +101,25 @@ export function StudySetup({ onStart }: StudySetupProps) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 4v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" />
+    </svg>
   );
 }
