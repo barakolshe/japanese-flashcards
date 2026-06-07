@@ -46,6 +46,10 @@ export function FlipCard({
 }: FlipCardProps) {
   const frontName = sideName(orientation.front);
   const backName = sideName(orientation.back);
+  // The speaker reads the Japanese word, so it belongs on whichever side is
+  // currently face-up showing Japanese — front by default, back when the
+  // learner reverses the study direction.
+  const japaneseFaceUp = (flipped ? orientation.back : orientation.front) === "japanese";
 
   return (
     <div className="relative [perspective:1400px]">
@@ -81,16 +85,16 @@ export function FlipCard({
 
       {/*
         The speaker is a sibling of the card button, not a child — nesting one
-        button inside another is invalid HTML. It overlays the front's top-right
-        corner. On flip it fades out (and leaves the tab order) rather than
-        popping, since the meaning side has no Japanese to read.
+        button inside another is invalid HTML. It overlays the top-right corner
+        and fades out of view (and the tab order) whenever the face showing isn't
+        the Japanese one, rather than popping in and out.
       */}
       {onSpeak ? (
         <button
           type="button"
           onClick={onSpeak}
-          aria-hidden={flipped}
-          tabIndex={flipped ? -1 : 0}
+          aria-hidden={!japaneseFaceUp}
+          tabIndex={japaneseFaceUp ? 0 : -1}
           aria-label={
             speaking ? "Stop pronunciation" : `Play pronunciation of ${japanese}`
           }
