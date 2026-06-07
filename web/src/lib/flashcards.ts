@@ -109,9 +109,13 @@ export function parseFlashcardsCsv(text: string): ParseResult {
  * handles quoting of values containing commas, quotes, or newlines.
  */
 export function serializeFlashcardsCsv(cards: Flashcard[]): string {
+  const fields = [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS];
+  // Papa.unparse appends a trailing newline for empty data (but not when there
+  // are rows); return the bare header so the output is consistent either way.
+  if (cards.length === 0) return fields.join(",");
   return Papa.unparse(
     {
-      fields: [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS],
+      fields,
       data: cards.map((card) => [card.japanese, card.english, card.folder]),
     },
     { newline: "\n" },

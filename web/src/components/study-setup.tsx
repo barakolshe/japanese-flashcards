@@ -7,7 +7,11 @@ import {
 } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 
-const PREVIEW_COUNT = 6;
+type StudySetupProps = {
+  /** Begin a session: `null` studies the whole deck, a string studies one folder. */
+  onStart: (folder: string | null) => void;
+};
+
 const EXPORT_FILENAME = "flashcards.csv";
 
 function folderCounts(cards: Flashcard[]): { folder: string; count: number }[] {
@@ -23,7 +27,7 @@ function folderCounts(cards: Flashcard[]): { folder: string; count: number }[] {
  */
 function downloadDeckCsv(cards: Flashcard[]) {
   const csv = serializeFlashcardsCsv(cards);
-  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -34,11 +38,10 @@ function downloadDeckCsv(cards: Flashcard[]) {
   URL.revokeObjectURL(url);
 }
 
-export function DeckSummary() {
+export function StudySetup({ onStart }: StudySetupProps) {
   const { cards, clear } = useFlashcards();
   const folders = folderCounts(cards);
-  const preview = cards.slice(0, PREVIEW_COUNT);
-  const remaining = cards.length - preview.length;
+  const hasFolderChoice = folders.length > 1;
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -53,7 +56,7 @@ export function DeckSummary() {
           <button
             type="button"
             onClick={() => downloadDeckCsv(cards)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-ink/30 hover:bg-ink/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <DownloadIcon />
             Export CSV
@@ -68,41 +71,34 @@ export function DeckSummary() {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {folders.map(({ folder, count }) => (
-          <span
-            key={folder}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-sm text-ink"
-          >
-            {folder}
-            <span className="text-muted">{count}</span>
-          </span>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => onStart(null)}
+        className="mt-6 w-full rounded-xl bg-primary px-5 py-4 text-lg font-semibold text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Study all {cards.length} cards
+      </button>
 
-      <ul className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {preview.map((card) => (
-          <li
-            key={card.id}
-            className="flex items-baseline justify-between gap-4 rounded-xl border border-border bg-surface px-5 py-4"
-          >
-            <span
-              lang="ja"
-              className="font-jp text-2xl font-medium leading-tight text-ink"
-            >
-              {card.japanese}
-            </span>
-            <span className="shrink-0 text-right text-sm text-muted">
-              {card.english}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {remaining > 0 ? (
-        <p className="mt-4 text-center text-sm text-muted">
-          and {remaining} more card{remaining > 1 ? "s" : ""} in your deck.
-        </p>
+      {hasFolderChoice ? (
+        <div className="mt-8">
+          <h3 className="text-sm font-medium text-muted">Or focus on a folder</h3>
+          <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {folders.map(({ folder, count }) => (
+              <li key={folder}>
+                <button
+                  type="button"
+                  onClick={() => onStart(folder)}
+                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <span className="font-medium text-ink">{folder}</span>
+                  <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
+                    {count}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </div>
   );
