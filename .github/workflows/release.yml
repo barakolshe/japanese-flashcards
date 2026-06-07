@@ -1,0 +1,40 @@
+name: Release gate (main)
+
+# Production gate: runs on the dev -> main release PR. Verifies the production build
+# before the PR can merge. Actual hosting deploy to production is handled by the host's
+# own GitHub integration (e.g. Vercel/Netlify) on push to main — not by this workflow.
+# There is no database, so there are no production migrations to apply pre-merge.
+on:
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
