@@ -3,6 +3,7 @@ import {
   DEFAULT_FOLDER,
   folderNames,
   parseFlashcardsCsv,
+  serializeFlashcardsCsv,
 } from "./flashcards";
 
 describe("parseFlashcardsCsv", () => {
@@ -139,6 +140,58 @@ describe("parseFlashcardsCsv", () => {
     const result = parseFlashcardsCsv(csv);
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("serializeFlashcardsCsv", () => {
+  it("writes a header and one row per card", () => {
+    const csv = serializeFlashcardsCsv([
+      { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
+      { id: "2", japanese: "犬", english: "dog", folder: "Animals" },
+    ]);
+
+    expect(csv).toBe(
+      ["japanese,english,folder", "猫,cat,Animals", "犬,dog,Animals"].join("\n"),
+    );
+  });
+
+  it("quotes values containing commas", () => {
+    const csv = serializeFlashcardsCsv([
+      { id: "1", japanese: "行ってきます", english: "I'm off, see you", folder: "Phrases" },
+    ]);
+
+    expect(csv).toContain('"I\'m off, see you"');
+  });
+
+  it("round-trips through the parser unchanged", () => {
+    const cards = [
+      { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
+      { id: "2", japanese: "行ってきます", english: "I'm off, see you", folder: "Phrases" },
+      { id: "3", japanese: "本", english: "book", folder: DEFAULT_FOLDER },
+    ];
+
+    const result = parseFlashcardsCsv(serializeFlashcardsCsv(cards));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.skipped).toEqual([]);
+    expect(
+      result.cards.map(({ japanese, english, folder }) => ({
+        japanese,
+        english,
+        folder,
+      })),
+    ).toEqual(
+      cards.map(({ japanese, english, folder }) => ({
+        japanese,
+        english,
+        folder,
+      })),
+    );
+  });
+
+  it("produces an empty deck as a header-only file", () => {
+    expect(serializeFlashcardsCsv([])).toBe("japanese,english,folder");
   });
 });
 

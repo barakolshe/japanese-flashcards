@@ -102,6 +102,22 @@ export function parseFlashcardsCsv(text: string): ParseResult {
   return { ok: true, cards, skipped };
 }
 
+/**
+ * Serialize flashcards back into CSV text that {@link parseFlashcardsCsv} can
+ * read again. Emits a `japanese,english,folder` header followed by one row per
+ * card, so a deck round-trips through export and re-upload unchanged. Papa
+ * handles quoting of values containing commas, quotes, or newlines.
+ */
+export function serializeFlashcardsCsv(cards: Flashcard[]): string {
+  return Papa.unparse(
+    {
+      fields: [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS],
+      data: cards.map((card) => [card.japanese, card.english, card.folder]),
+    },
+    { newline: "\n" },
+  );
+}
+
 /** Distinct folder names present in a set of cards, in first-seen order. */
 export function folderNames(cards: Flashcard[]): string[] {
   const seen = new Set<string>();
