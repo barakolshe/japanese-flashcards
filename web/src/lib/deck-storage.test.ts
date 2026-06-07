@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Deck } from "./deck";
-import { clearStoredDeck, loadStoredDeck, saveDeck } from "./deck-storage";
+import {
+  clearStoredDeck,
+  loadStoredDeck,
+  loadStoredFront,
+  saveDeck,
+  saveFront,
+} from "./deck-storage";
 
 const STORAGE_KEY = "flashcards:deck:v1";
+const FRONT_STORAGE_KEY = "flashcards:front:v1";
 
 /** Minimal in-memory localStorage stand-in for the node test environment. */
 function makeLocalStorage() {
@@ -99,6 +106,24 @@ describe("clearStoredDeck", () => {
   });
 });
 
+describe("saveFront / loadStoredFront", () => {
+  it("round-trips the chosen direction", () => {
+    saveFront("english");
+    expect(loadStoredFront()).toBe("english");
+    saveFront("japanese");
+    expect(loadStoredFront()).toBe("japanese");
+  });
+
+  it("returns null when nothing is stored", () => {
+    expect(loadStoredFront()).toBeNull();
+  });
+
+  it("discards an unrecognized value", () => {
+    localStorage.setItem(FRONT_STORAGE_KEY, "sideways");
+    expect(loadStoredFront()).toBeNull();
+  });
+});
+
 describe("without browser storage (SSR)", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
@@ -109,5 +134,10 @@ describe("without browser storage (SSR)", () => {
     expect(loadStoredDeck()).toBeNull();
     expect(() => saveDeck(sampleDeck)).not.toThrow();
     expect(() => clearStoredDeck()).not.toThrow();
+  });
+
+  it("front helpers are also safe without storage", () => {
+    expect(loadStoredFront()).toBeNull();
+    expect(() => saveFront("english")).not.toThrow();
   });
 });

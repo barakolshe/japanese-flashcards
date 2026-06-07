@@ -13,7 +13,7 @@
 
 ## Project
 
-A personal Japanese-learning flashcards web app. The user uploads a CSV file of words; the app turns them into a deck of flip-and-shuffle flashcards (Japanese on one side, English meaning on the other). There is also an export button to download cards back out as a CSV. No login, no server, and no database — but the working deck (cards plus their folder organization) is saved client-side in the browser's `localStorage`, so a refresh or a return visit restores it. Cards still originate from an uploaded CSV; uploading a new file replaces the saved deck, and "Load a different file" clears it (behind a confirmation).
+A personal Japanese-learning flashcards web app. The user uploads a CSV file of words; the app turns them into a deck of flip-and-shuffle flashcards (Japanese on one side, English meaning on the other). There is also an export button to download cards back out as a CSV. No login, no server, and no database — but the working deck (cards plus their folder organization) and the "show first" study direction are saved client-side in the browser's `localStorage`, so a refresh or a return visit restores them. Cards still originate from an uploaded CSV; uploading a new file replaces the saved deck, and "Load a different file" clears it (behind a confirmation).
 
 The web app lives in `./web` (Next.js 15, App Router, TypeScript, Tailwind CSS, pnpm). Run commands from inside `./web`.
 

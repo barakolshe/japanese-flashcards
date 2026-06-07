@@ -1,17 +1,20 @@
 import type { Deck } from "./deck";
 import type { Flashcard } from "./flashcards";
+import type { CardFront } from "./study-direction";
 
 /**
- * Local persistence for the working deck. The deck is the user's only state, so
- * we save it to `localStorage` after every change and reload it on the next
- * visit — no account, no server, no sync. The stored value is versioned so the
- * shape can evolve; anything we can't read back cleanly is discarded rather than
- * surfaced as a half-broken deck.
+ * Local persistence for the user's deck and study preferences. The deck is the
+ * user's main state, so we save it to `localStorage` after every change and
+ * reload it on the next visit — no account, no server, no sync. The stored value
+ * is versioned so the shape can evolve; anything we can't read back cleanly is
+ * discarded rather than surfaced as a half-broken deck.
  */
 
 /** Bump when the stored shape changes incompatibly; older payloads are dropped. */
 const STORAGE_VERSION = 1;
 const STORAGE_KEY = "flashcards:deck:v1";
+/** The "show first" study direction is a standalone preference, not deck data. */
+const FRONT_STORAGE_KEY = "flashcards:front:v1";
 
 type StoredDeck = {
   version: number;
@@ -104,5 +107,30 @@ export function clearStoredDeck(): void {
     storage.removeItem(STORAGE_KEY);
   } catch {
     // Ignore — there's nothing the user can do about a failed delete.
+  }
+}
+
+/** Read the saved "show first" direction, or `null` if none/invalid is stored. */
+export function loadStoredFront(): CardFront | null {
+  const storage = getStorage();
+  if (!storage) return null;
+
+  let raw: string | null;
+  try {
+    raw = storage.getItem(FRONT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  return raw === "japanese" || raw === "english" ? raw : null;
+}
+
+/** Persist the chosen "show first" direction so it survives a refresh. */
+export function saveFront(front: CardFront): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(FRONT_STORAGE_KEY, front);
+  } catch {
+    // Out of quota or storage disabled — the preference just won't stick.
   }
 }
