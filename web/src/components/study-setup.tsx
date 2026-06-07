@@ -10,6 +10,8 @@ import { useFlashcards } from "@/lib/flashcards-store";
 type StudySetupProps = {
   /** Begin a session: `null` studies the whole deck, a string studies one folder. */
   onStart: (folder: string | null) => void;
+  /** Open the organize screen to sort cards into folders. */
+  onOrganize: () => void;
 };
 
 const EXPORT_FILENAME = "flashcards.csv";
@@ -38,7 +40,7 @@ function downloadDeckCsv(cards: Flashcard[]) {
   URL.revokeObjectURL(url);
 }
 
-export function StudySetup({ onStart }: StudySetupProps) {
+export function StudySetup({ onStart, onOrganize }: StudySetupProps) {
   const { cards, clear } = useFlashcards();
   const folders = folderCounts(cards);
   const hasFolderChoice = folders.length > 1;
@@ -52,7 +54,15 @@ export function StudySetup({ onStart }: StudySetupProps) {
           <span aria-hidden className="size-2.5 rounded-full bg-accent" />
           {cards.length} card{cards.length > 1 ? "s" : ""} ready
         </h2>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={onOrganize}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-ink/30 hover:bg-ink/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <FolderIcon />
+            Organize
+          </button>
           <button
             type="button"
             onClick={() => downloadDeckCsv(cards)}
@@ -101,6 +111,24 @@ export function StudySetup({ onStart }: StudySetupProps) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />
+    </svg>
   );
 }
 
