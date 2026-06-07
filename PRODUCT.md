@@ -6,11 +6,11 @@ product
 
 ## Users
 
-A single person learning Japanese (the app's owner). They study at a desk, usually in daytime light, working through vocabulary they've collected into a CSV. Their context is short, focused study sessions: load a set of words, drill them, move on. No account, no sync, no clutter — the file is the source of truth each session.
+A single person learning Japanese (the app's owner). They study at a desk, usually in daytime light, working through vocabulary they've collected into a CSV. Their context is short, focused study sessions: load a set of words, drill them, move on. No account, no sync, no clutter. Their deck is saved locally in the browser, so it's waiting for them when they come back — and a CSV is still how cards get in and out.
 
 ## Product Purpose
 
-A personal Japanese-learning flashcards app. The user uploads a CSV of words and the app turns each row into a flip-and-shuffle flashcard (Japanese on one side, English meaning on the other), grouped by the folder/category named in the file. They can study a deck and export their cards back to CSV. Success is: drop in a file, and within seconds be studying clean, correctly-parsed cards with zero ceremony.
+A personal Japanese-learning flashcards app. The user uploads a CSV of words and the app turns each row into a flip-and-shuffle flashcard (Japanese on one side, English meaning on the other), grouped by the folder/category named in the file. The deck and its organization are remembered in the browser between visits, and the user can export their cards back to CSV. Success is: drop in a file, and within seconds be studying clean, correctly-parsed cards with zero ceremony — then find them right where you left them next time.
 
 ## Brand Personality
 

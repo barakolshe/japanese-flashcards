@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { loadStoredFront, saveFront } from "@/lib/deck-storage";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { selectDeck } from "@/lib/study";
+import { orientationFor, type CardFront } from "@/lib/study-direction";
 import { DeckOrganize } from "./deck-organize";
 import { StudySession } from "./study-session";
 import { StudySetup } from "./study-setup";
@@ -18,6 +20,18 @@ export function DeckStudy() {
   const { cards } = useFlashcards();
   const [target, setTarget] = useState<Target>(undefined);
   const [organizing, setOrganizing] = useState(false);
+  // Which side leads. Kept here so the choice survives leaving a session and
+  // applies to every folder, not just the deck studied first. Restored from the
+  // saved preference on mount — safe to read storage eagerly because DeckStudy
+  // only renders on the client, after the deck has hydrated.
+  const [front, setFront] = useState<CardFront>(
+    () => loadStoredFront() ?? "japanese",
+  );
+
+  // Remember the direction across refreshes and return visits.
+  useEffect(() => {
+    saveFront(front);
+  }, [front]);
 
   if (target) {
     const deck = selectDeck(cards, target.folder);
@@ -27,6 +41,7 @@ export function DeckStudy() {
         key={target.folder ?? "__all__"}
         deck={deck}
         title={target.folder ?? "All cards"}
+        orientation={orientationFor(front)}
         onExit={() => setTarget(undefined)}
       />
     );
@@ -38,6 +53,8 @@ export function DeckStudy() {
 
   return (
     <StudySetup
+      front={front}
+      onFrontChange={setFront}
       onStart={(folder) => setTarget({ folder })}
       onOrganize={() => setOrganizing(true)}
     />

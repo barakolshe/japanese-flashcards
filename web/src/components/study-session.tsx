@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { shuffle, type StudyResult } from "@/lib/study";
 import { useJapaneseSpeech } from "@/lib/speech";
+import { revealLabel, type CardOrientation } from "@/lib/study-direction";
 import { FlipCard } from "./flip-card";
 
 type StudySessionProps = {
@@ -11,11 +12,18 @@ type StudySessionProps = {
   deck: Flashcard[];
   /** Human label for what's being studied — a folder name or "All cards". */
   title: string;
+  /** Which side is the prompt and which is the reveal. */
+  orientation: CardOrientation;
   /** Leave the session and return to the deck setup screen. */
   onExit: () => void;
 };
 
-export function StudySession({ deck, title, onExit }: StudySessionProps) {
+export function StudySession({
+  deck,
+  title,
+  orientation,
+  onExit,
+}: StudySessionProps) {
   // `pool` is the set being drilled (the full deck, or the cards missed in a
   // previous round). `order` is the current ordering of that pool.
   const [pool, setPool] = useState<Flashcard[]>(deck);
@@ -125,6 +133,7 @@ export function StudySession({ deck, title, onExit }: StudySessionProps) {
         <FlipCard
           japanese={current.japanese}
           english={current.english}
+          orientation={orientation}
           flipped={flipped}
           onFlip={() => setFlipped((f) => !f)}
           buttonRef={cardRef}
@@ -157,7 +166,7 @@ export function StudySession({ deck, title, onExit }: StudySessionProps) {
             onClick={() => setFlipped(true)}
             className="w-full rounded-xl border border-primary/30 bg-primary/[0.04] px-4 py-3 text-base font-semibold text-primary transition-colors hover:bg-primary/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            Show meaning
+            {revealLabel(orientation.back)}
           </button>
         )}
       </div>
