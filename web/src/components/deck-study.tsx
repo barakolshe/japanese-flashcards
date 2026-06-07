@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { selectDeck } from "@/lib/study";
+import { DeckOrganize } from "./deck-organize";
 import { StudySession } from "./study-session";
 import { StudySetup } from "./study-setup";
 
@@ -10,12 +11,13 @@ import { StudySetup } from "./study-setup";
 type Target = { folder: string | null } | undefined;
 
 /**
- * Owns the loaded-deck experience: the study setup screen, and the active
- * study session once a target is chosen.
+ * Owns the loaded-deck experience: the study setup screen, the organize screen,
+ * and the active study session once a target is chosen.
  */
 export function DeckStudy() {
   const { cards } = useFlashcards();
   const [target, setTarget] = useState<Target>(undefined);
+  const [organizing, setOrganizing] = useState(false);
 
   if (target) {
     const deck = selectDeck(cards, target.folder);
@@ -30,5 +32,14 @@ export function DeckStudy() {
     );
   }
 
-  return <StudySetup onStart={(folder) => setTarget({ folder })} />;
+  if (organizing) {
+    return <DeckOrganize onBack={() => setOrganizing(false)} />;
+  }
+
+  return (
+    <StudySetup
+      onStart={(folder) => setTarget({ folder })}
+      onOrganize={() => setOrganizing(true)}
+    />
+  );
 }
