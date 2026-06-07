@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   folderNames,
   serializeFlashcardsCsv,
@@ -52,6 +53,7 @@ export function StudySetup({
   onOrganize,
 }: StudySetupProps) {
   const { cards, clear } = useFlashcards();
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const folders = folderCounts(cards);
   const hasFolderChoice = folders.length > 1;
 
@@ -81,15 +83,44 @@ export function StudySetup({
             <DownloadIcon />
             Export CSV
           </button>
-          <button
-            type="button"
-            onClick={clear}
-            className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            Load a different file
-          </button>
+          {confirmingClear ? (
+            <span className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={clear}
+                className="rounded-lg border border-danger/40 bg-danger/[0.06] px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+              >
+                Clear saved deck
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingClear(true)}
+              className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Load a different file
+            </button>
+          )}
         </div>
       </div>
+
+      {confirmingClear ? (
+        <p
+          role="status"
+          className="mt-3 text-right text-sm text-muted motion-safe:animate-[rise_0.16s_var(--ease-out-quart)]"
+        >
+          This erases the saved deck and your folder organization. Export first
+          if you want to keep it.
+        </p>
+      ) : null}
 
       <ShowFirstToggle front={front} onFrontChange={onFrontChange} />
 

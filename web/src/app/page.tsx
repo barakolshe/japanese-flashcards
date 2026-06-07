@@ -5,7 +5,7 @@ import { DeckStudy } from "@/components/deck-study";
 import { useFlashcards } from "@/lib/flashcards-store";
 
 export default function Home() {
-  const { cards } = useFlashcards();
+  const { hydrated, cards } = useFlashcards();
   const hasDeck = cards.length > 0;
 
   return (
@@ -19,16 +19,31 @@ export default function Home() {
             Japanese Flashcards
           </h1>
           <p className="mx-auto mt-4 max-w-md text-pretty text-muted">
-            {hasDeck
-              ? "Pick a folder or the whole deck, then flip through your cards."
-              : "Upload a CSV of your words to build a deck of flip-and-shuffle flashcards."}
+            {!hydrated
+              ? "Loading your saved deck…"
+              : hasDeck
+                ? "Pick a folder or the whole deck, then flip through your cards."
+                : "Upload a CSV of your words to build a deck of flip-and-shuffle flashcards."}
           </p>
         </header>
 
         <section className="mt-12 w-full">
-          {hasDeck ? <DeckStudy /> : <CsvUpload />}
+          {/* Until the saved deck is restored, show a calm placeholder rather
+              than flashing the upload screen and then swapping it out. */}
+          {!hydrated ? <DeckSkeleton /> : hasDeck ? <DeckStudy /> : <CsvUpload />}
         </section>
       </main>
     </div>
+  );
+}
+
+/** Neutral, fixed-height stand-in shown while the saved deck is being read. */
+function DeckSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading your saved deck"
+      className="h-56 w-full rounded-2xl border border-border bg-surface/60 motion-safe:animate-pulse"
+    />
   );
 }
