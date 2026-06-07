@@ -13,14 +13,14 @@
 
 ## Project
 
-A personal Japanese-learning flashcards web app. The user uploads a CSV file of words; the app turns them into a deck of flip-and-shuffle flashcards (Japanese on one side, English meaning on the other). There is also an export button to download cards back out as a CSV. No login, no database, and no browser-side persistence — cards come straight from the uploaded file each session.
+A personal Japanese-learning flashcards web app. The user uploads a CSV file of words; the app turns them into a deck of flip-and-shuffle flashcards (Japanese on one side, English meaning on the other). There is also an export button to download cards back out as a CSV. No login, no server, and no database — but the working deck (cards plus their folder organization) is saved client-side in the browser's `localStorage`, so a refresh or a return visit restores it. Cards still originate from an uploaded CSV; uploading a new file replaces the saved deck, and "Load a different file" clears it (behind a confirmation).
 
 The web app lives in `./web` (Next.js 15, App Router, TypeScript, Tailwind CSS, pnpm). Run commands from inside `./web`.
 
 ## Tools
 
 - **Package manager**: pnpm (run from `./web`). Common scripts: `pnpm dev`, `pnpm build`, `pnpm lint`.
-- No database, backend, or external services are used — this is a purely client-side web app. If the project ever grows to need accounts or stored data, consider adding Supabase (and the `supabase` MCP server for managing schema/migrations) at that point.
+- No database, backend, or external services are used — this is a purely client-side web app. The only persistence is the browser's `localStorage` (see `web/src/lib/deck-storage.ts`); there is no server-side or cross-device storage. If the project ever grows to need accounts or synced data, consider adding Supabase (and the `supabase` MCP server for managing schema/migrations) at that point.
 
 ## Issues
 

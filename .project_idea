@@ -2,5 +2,5 @@
   "ideaId": "d3802cad-b917-4b17-a012-ee3e70fbd587",
   "claudeMdTemplateVersion": 2,
   "title": "Japanese Flashcards",
-  "description": "A personal web app for learning Japanese with flashcards. The user uploads a CSV file of words, and the app turns them into a deck of flip-and-shuffle flashcards showing the Japanese on one side and the English meaning on the other. No login and no saving — cards come straight from the uploaded file."
+  "description": "A personal web app for learning Japanese with flashcards. The user uploads a CSV file of words, and the app turns them into a deck of flip-and-shuffle flashcards showing the Japanese on one side and the English meaning on the other. No login and no server — the deck and its folder organization are saved locally in the browser so they persist between sessions, and cards are imported from and exported to CSV."
 }
