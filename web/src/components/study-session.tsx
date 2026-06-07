@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { shuffle, type StudyResult } from "@/lib/study";
+import { useJapaneseSpeech } from "@/lib/speech";
 import { FlipCard } from "./flip-card";
 
 type StudySessionProps = {
@@ -25,6 +26,8 @@ export function StudySession({ deck, title, onExit }: StudySessionProps) {
   const [done, setDone] = useState(false);
 
   const cardRef = useRef<HTMLButtonElement | null>(null);
+  const { supported: canSpeak, speaking, toggle: toggleSpeech, stop: stopSpeech } =
+    useJapaneseSpeech();
 
   const total = order.length;
   const current = order[index];
@@ -41,6 +44,12 @@ export function StudySession({ deck, title, onExit }: StudySessionProps) {
   useEffect(() => {
     if (!done) cardRef.current?.focus();
   }, [index, done]);
+
+  // Stop any audio when the visible card changes — the old word shouldn't keep
+  // playing over the new one.
+  useEffect(() => {
+    stopSpeech();
+  }, [index, stopSpeech]);
 
   function startRound(nextPool: Flashcard[], doShuffle: boolean) {
     setPool(nextPool);
@@ -119,6 +128,8 @@ export function StudySession({ deck, title, onExit }: StudySessionProps) {
           flipped={flipped}
           onFlip={() => setFlipped((f) => !f)}
           buttonRef={cardRef}
+          onSpeak={canSpeak ? () => toggleSpeech(current.japanese) : undefined}
+          speaking={speaking}
         />
       </div>
 
