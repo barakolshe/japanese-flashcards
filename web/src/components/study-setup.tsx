@@ -7,8 +7,13 @@ import {
   type Flashcard,
 } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
+import type { CardFront } from "@/lib/study-direction";
 
 type StudySetupProps = {
+  /** Which side cards show first. */
+  front: CardFront;
+  /** Change which side leads. */
+  onFrontChange: (front: CardFront) => void;
   /** Begin a session: `null` studies the whole deck, a string studies one folder. */
   onStart: (folder: string | null) => void;
   /** Open the organize screen to sort cards into folders. */
@@ -41,7 +46,12 @@ function downloadDeckCsv(cards: Flashcard[]) {
   URL.revokeObjectURL(url);
 }
 
-export function StudySetup({ onStart, onOrganize }: StudySetupProps) {
+export function StudySetup({
+  front,
+  onFrontChange,
+  onStart,
+  onOrganize,
+}: StudySetupProps) {
   const { cards, clear } = useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
   const folders = folderCounts(cards);
@@ -112,10 +122,12 @@ export function StudySetup({ onStart, onOrganize }: StudySetupProps) {
         </p>
       ) : null}
 
+      <ShowFirstToggle front={front} onFrontChange={onFrontChange} />
+
       <button
         type="button"
         onClick={() => onStart(null)}
-        className="mt-6 w-full rounded-xl bg-primary px-5 py-4 text-lg font-semibold text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="mt-4 w-full rounded-xl bg-primary px-5 py-4 text-lg font-semibold text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Study all {cards.length} cards
       </button>
@@ -142,6 +154,80 @@ export function StudySetup({ onStart, onOrganize }: StudySetupProps) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Pick which side leads. A segmented control over native radios, so arrow keys,
+ * focus, and screen readers work without reinventing the affordance. The little
+ * script glyph (あ / A) names each side at a glance.
+ */
+function ShowFirstToggle({
+  front,
+  onFrontChange,
+}: {
+  front: CardFront;
+  onFrontChange: (front: CardFront) => void;
+}) {
+  return (
+    <fieldset className="mt-7">
+      <legend className="text-sm font-medium text-muted">Show first</legend>
+      <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface p-1">
+        <FrontOption
+          value="japanese"
+          glyph="あ"
+          label="Japanese"
+          current={front}
+          onChange={onFrontChange}
+        />
+        <FrontOption
+          value="english"
+          glyph="A"
+          label="English"
+          current={front}
+          onChange={onFrontChange}
+        />
+      </div>
+    </fieldset>
+  );
+}
+
+function FrontOption({
+  value,
+  glyph,
+  label,
+  current,
+  onChange,
+}: {
+  value: CardFront;
+  glyph: string;
+  label: string;
+  current: CardFront;
+  onChange: (front: CardFront) => void;
+}) {
+  const selected = current === value;
+  return (
+    <label
+      className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary ${
+        selected ? "bg-primary text-bg" : "text-muted hover:text-ink"
+      }`}
+    >
+      <input
+        type="radio"
+        name="card-front"
+        value={value}
+        checked={selected}
+        onChange={() => onChange(value)}
+        className="sr-only"
+      />
+      <span
+        aria-hidden
+        className="font-jp text-base leading-none opacity-80"
+      >
+        {glyph}
+      </span>
+      {label}
+    </label>
   );
 }
 
