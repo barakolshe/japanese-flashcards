@@ -1,7 +1,7 @@
 "use client";
 
 import { CsvUpload } from "@/components/csv-upload";
-import { DeckSummary } from "@/components/deck-summary";
+import { DeckStudy } from "@/components/deck-study";
 import { useFlashcards } from "@/lib/flashcards-store";
 
 export default function Home() {
@@ -20,13 +20,13 @@ export default function Home() {
           </h1>
           <p className="mx-auto mt-4 max-w-md text-pretty text-muted">
             {hasDeck
-              ? "Your deck is loaded and ready to study."
+              ? "Pick a folder or the whole deck, then flip through your cards."
               : "Upload a CSV of your words to build a deck of flip-and-shuffle flashcards."}
           </p>
         </header>
 
         <section className="mt-12 w-full">
-          {hasDeck ? <DeckSummary /> : <CsvUpload />}
+          {hasDeck ? <DeckStudy /> : <CsvUpload />}
         </section>
       </main>
     </div>
