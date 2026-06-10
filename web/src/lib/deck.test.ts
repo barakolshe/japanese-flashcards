@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_FOLDER, type Flashcard } from "./flashcards";
 import {
   addFolder,
+  appendCards,
   deckFromCards,
   folderCounts,
   moveCard,
@@ -22,6 +23,30 @@ describe("deckFromCards", () => {
       card("3", "Objects"),
     ]);
     expect(deck.folders).toEqual(["Animals", "Objects"]);
+  });
+});
+
+describe("appendCards", () => {
+  it("appends cards and keeps the existing cards and folders", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      folders: ["Animals", "Empty"],
+    };
+    const next = appendCards(deck, [card("2", "Animals")]);
+    expect(next.cards.map((c) => c.id)).toEqual(["1", "2"]);
+    expect(next.folders).toEqual(["Animals", "Empty"]);
+  });
+
+  it("adds new folders the imported cards introduce, after the existing ones", () => {
+    const deck: Deck = { cards: [card("1", "Animals")], folders: ["Animals"] };
+    const next = appendCards(deck, [card("2", "Objects")]);
+    expect(next.folders).toEqual(["Animals", "Objects"]);
+  });
+
+  it("reuses an existing folder matched case-insensitively", () => {
+    const deck: Deck = { cards: [card("1", "Animals")], folders: ["Animals"] };
+    const next = appendCards(deck, [card("2", "animals")]);
+    expect(next.folders).toEqual(["Animals"]);
   });
 });
 

@@ -116,14 +116,55 @@ describe("parseFlashcardsCsv", () => {
     ]);
   });
 
-  it("fails when a required column is missing", () => {
+  it("reads a file with no header row positionally", () => {
+    const csv = ["猫,cat,Animals", "犬,dog,Animals"].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0]).toMatchObject({
+      japanese: "猫",
+      english: "cat",
+      folder: "Animals",
+    });
+  });
+
+  it("reads a headerless file without a folder column", () => {
+    const csv = ["猫,cat", "犬,dog"].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0].folder).toBe(DEFAULT_FOLDER);
+  });
+
+  it("numbers lines from 1 when there is no header row", () => {
+    const csv = ["猫,cat", ",orphan", "犬,dog"].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards).toHaveLength(2);
+    expect(result.skipped).toEqual([{ line: 2, reason: "missing Japanese" }]);
+  });
+
+  it("treats a header naming only one column as data, not a header", () => {
     const csv = ["japanese,folder", "猫,Animals"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toContain("english");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards).toHaveLength(2);
+    expect(result.cards[0]).toMatchObject({
+      japanese: "japanese",
+      english: "folder",
+    });
   });
 
   it("fails on a header-only file", () => {
@@ -132,6 +173,14 @@ describe("parseFlashcardsCsv", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("no card rows");
+  });
+
+  it("fails on an empty file", () => {
+    const result = parseFlashcardsCsv("");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("empty");
   });
 
   it("fails when every row is invalid", () => {

@@ -1,69 +1,31 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import {
-  DEFAULT_FOLDER,
-  parseFlashcardsCsv,
-  type SkippedRow,
-} from "@/lib/flashcards";
+import { DEFAULT_FOLDER } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
-
-function isCsvFile(file: File): boolean {
-  return (
-    file.name.toLowerCase().endsWith(".csv") ||
-    file.type === "text/csv" ||
-    file.type === "application/vnd.ms-excel"
-  );
-}
+import { useCsvImport } from "@/lib/use-csv-import";
 
 export function CsvUpload() {
   const { loadCards } = useFlashcards();
+  const { isReading, error, skipped, fileErrors, importFiles } =
+    useCsvImport(loadCards);
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [isDragging, setIsDragging] = useState(false);
-  const [isReading, setIsReading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [skipped, setSkipped] = useState<SkippedRow[]>([]);
-
-  async function handleFile(file: File) {
-    setError(null);
-    setSkipped([]);
-
-    if (!isCsvFile(file)) {
-      setError(`"${file.name}" is not a CSV file. Please choose a .csv file.`);
-      return;
-    }
-
-    setIsReading(true);
-    try {
-      const text = await file.text();
-      const result = parseFlashcardsCsv(text);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setSkipped(result.skipped);
-      loadCards(result.cards);
-    } catch {
-      setError(`Couldn't read "${file.name}". The file may be corrupted.`);
-    } finally {
-      setIsReading(false);
-    }
-  }
 
   function onInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) void handleFile(file);
-    // Allow re-selecting the same file after an error.
+    const files = Array.from(event.target.files ?? []);
+    if (files.length > 0) void importFiles(files);
+    // Allow re-selecting the same file(s) after an error.
     event.target.value = "";
   }
 
   function onDrop(event: React.DragEvent) {
     event.preventDefault();
     setIsDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) void handleFile(file);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length > 0) void importFiles(files);
   }
 
   return (
@@ -83,6 +45,7 @@ export function CsvUpload() {
           id={inputId}
           type="file"
           accept=".csv,text/csv"
+          multiple
           onChange={onInputChange}
           className="peer sr-only"
         />
@@ -100,18 +63,18 @@ export function CsvUpload() {
           <span className="space-y-1">
             <span className="block text-lg font-semibold text-ink">
               {isReading ? (
-                "Reading your file…"
+                "Reading your files…"
               ) : (
                 <>
-                  Drop a CSV here, or{" "}
+                  Drop CSV files here, or{" "}
                   <span className="text-primary underline underline-offset-4">
-                    choose a file
+                    choose files
                   </span>
                 </>
               )}
             </span>
             <span className="block text-sm text-muted">
-              One row per card. Header columns:{" "}
+              One row per card. Columns:{" "}
               <code className="font-mono text-ink">japanese, english, folder</code>
             </span>
           </span>
@@ -119,8 +82,9 @@ export function CsvUpload() {
       </div>
 
       <p className="mt-3 text-center text-sm text-muted">
-        The <span className="font-medium text-ink">folder</span> column is
-        optional — cards without one go to{" "}
+        Pick several files at once if you like. A header row is optional — without
+        one, columns are read in order. Cards without a{" "}
+        <span className="font-medium text-ink">folder</span> go to{" "}
         <span className="font-medium text-ink">{DEFAULT_FOLDER}</span>.
       </p>
 
@@ -133,19 +97,54 @@ export function CsvUpload() {
         </div>
       ) : null}
 
-      {skipped.length > 0 ? (
-        <div
-          role="status"
-          className="mt-5 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted"
-        >
+      <ImportNotice skipped={skipped} fileErrors={fileErrors} />
+    </div>
+  );
+}
+
+/**
+ * Shows non-fatal import feedback: files that couldn't be parsed (when others
+ * still loaded) and individual rows that were dropped. Shared in spirit with the
+ * "add more cards" flow on the study screen.
+ */
+export function ImportNotice({
+  skipped,
+  fileErrors,
+}: {
+  skipped: { line: number; reason: string; file?: string }[];
+  fileErrors: string[];
+}) {
+  if (skipped.length === 0 && fileErrors.length === 0) return null;
+
+  return (
+    <div
+      role="status"
+      className="mt-5 space-y-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted"
+    >
+      {fileErrors.length > 0 ? (
+        <div>
           <p className="font-medium text-ink">
-            Loaded your cards, but skipped {skipped.length} row
-            {skipped.length > 1 ? "s" : ""}:
+            Skipped {fileErrors.length} file
+            {fileErrors.length > 1 ? "s" : ""}:
+          </p>
+          <ul className="mt-2 space-y-0.5">
+            {fileErrors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {skipped.length > 0 ? (
+        <div>
+          <p className="font-medium text-ink">
+            Skipped {skipped.length} row{skipped.length > 1 ? "s" : ""}:
           </p>
           <ul className="mt-2 space-y-0.5">
             {skipped.slice(0, 6).map((row) => (
-              <li key={row.line}>
-                Line {row.line} — {row.reason}
+              <li key={`${row.file ?? ""}:${row.line}`}>
+                {row.file ? `${row.file}, line ${row.line}` : `Line ${row.line}`}{" "}
+                — {row.reason}
               </li>
             ))}
             {skipped.length > 6 ? (

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   folderNames,
   serializeFlashcardsCsv,
   type Flashcard,
 } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
+import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
+import { ImportNotice } from "./csv-upload";
 
 type StudySetupProps = {
   /** Which side cards show first. */
@@ -52,10 +54,11 @@ export function StudySetup({
   onStart,
   onOrganize,
 }: StudySetupProps) {
-  const { cards, clear } = useFlashcards();
+  const { cards, addCards, clear } = useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
   const folders = folderCounts(cards);
   const hasFolderChoice = folders.length > 1;
+  const importer = useCsvImport(addCards);
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -67,6 +70,7 @@ export function StudySetup({
           {cards.length} card{cards.length > 1 ? "s" : ""} ready
         </h2>
         <div className="flex flex-wrap items-center justify-end gap-1">
+          <AddCardsButton importer={importer} />
           <button
             type="button"
             onClick={onOrganize}
@@ -122,6 +126,29 @@ export function StudySetup({
         </p>
       ) : null}
 
+      {importer.error ? (
+        <div
+          role="alert"
+          className="mt-4 rounded-xl border border-danger/30 bg-danger/[0.06] px-4 py-3 text-sm text-danger"
+        >
+          {importer.error}
+        </div>
+      ) : null}
+
+      {importer.added > 0 ? (
+        <p
+          role="status"
+          className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.07] px-4 py-3 text-sm font-medium text-ink"
+        >
+          Added {importer.added} card{importer.added > 1 ? "s" : ""} to your deck.
+        </p>
+      ) : null}
+
+      <ImportNotice
+        skipped={importer.skipped}
+        fileErrors={importer.fileErrors}
+      />
+
       <ShowFirstToggle front={front} onFrontChange={onFrontChange} />
 
       <button
@@ -154,6 +181,47 @@ export function StudySetup({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Imports more CSV files into the existing deck. A button fronting a hidden
+ * file input; the surrounding {@link StudySetup} renders the resulting feedback.
+ */
+function AddCardsButton({
+  importer,
+}: {
+  importer: ReturnType<typeof useCsvImport>;
+}) {
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function onInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length > 0) void importer.importFiles(files);
+    // Allow re-selecting the same file(s) again.
+    event.target.value = "";
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        id={inputId}
+        type="file"
+        accept=".csv,text/csv"
+        multiple
+        onChange={onInputChange}
+        className="sr-only"
+      />
+      <label
+        htmlFor={inputId}
+        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-medium text-ink transition-colors hover:border-ink/30 hover:bg-ink/[0.03] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
+      >
+        {importer.isReading ? <SpinnerIcon /> : <PlusIcon />}
+        {importer.isReading ? "Reading…" : "Add cards"}
+      </label>
+    </>
   );
 }
 
@@ -228,6 +296,43 @@ function FrontOption({
       </span>
       {label}
     </label>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+      className="motion-safe:animate-spin"
+    >
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
   );
 }
 

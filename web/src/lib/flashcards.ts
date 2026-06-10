@@ -35,44 +35,80 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+/** Where each column lives, plus how to interpret line numbers and rows. */
+type ColumnLayout = {
+  japanese: number;
+  english: number;
+  /** -1 when there is no folder column. */
+  folder: number;
+  /** Rows that hold card data (the header row is excluded when present). */
+  dataRows: string[][];
+  /** 1-based source line of the first data row (2 with a header, 1 without). */
+  firstDataLine: number;
+};
+
+/**
+ * Decide how to read the parsed rows. A first row that names both `japanese`
+ * and `english` (case-insensitively, in any order) is treated as a header and
+ * the columns are located by name. Otherwise the file is taken to have no
+ * header and columns are read positionally as japanese, english, folder.
+ */
+function resolveLayout(rows: string[][]): ColumnLayout {
+  const header = rows[0].map((cell) => cell.trim().toLowerCase());
+  const hasHeader = header.includes("japanese") && header.includes("english");
+
+  if (hasHeader) {
+    return {
+      japanese: header.indexOf("japanese"),
+      english: header.indexOf("english"),
+      folder: header.indexOf("folder"),
+      dataRows: rows.slice(1),
+      firstDataLine: 2,
+    };
+  }
+
+  return {
+    japanese: 0,
+    english: 1,
+    folder: 2,
+    dataRows: rows,
+    firstDataLine: 1,
+  };
+}
+
 /**
  * Parse the text of a CSV file into flashcards.
  *
- * Expects a header row naming the columns `japanese`, `english`, and
- * (optionally) `folder`. Header matching is case-insensitive and
- * order-independent. Rows missing a Japanese or English value are skipped and
- * reported; a blank/absent folder falls back to {@link DEFAULT_FOLDER}.
+ * The file may start with a header row naming the columns `japanese`,
+ * `english`, and (optionally) `folder` — matched case-insensitively and in any
+ * order — or it may have no header at all, in which case columns are read
+ * positionally as japanese, english, folder. Rows missing a Japanese or
+ * English value are skipped and reported; a blank/absent folder falls back to
+ * {@link DEFAULT_FOLDER}.
  */
 export function parseFlashcardsCsv(text: string): ParseResult {
-  const parsed = Papa.parse<Record<string, string>>(text, {
-    header: true,
+  const parsed = Papa.parse<string[]>(text, {
     skipEmptyLines: "greedy",
-    transformHeader: (header) => header.trim().toLowerCase(),
   });
 
-  const headers = parsed.meta.fields ?? [];
-  const missing = REQUIRED_COLUMNS.filter((col) => !headers.includes(col));
-  if (missing.length > 0) {
-    const expected = [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS].join(", ");
-    return {
-      ok: false,
-      error:
-        `This CSV is missing the ${missing.join(" and ")} ` +
-        `column${missing.length > 1 ? "s" : ""}. ` +
-        `The first row must name the columns: ${expected} ` +
-        `(folder is optional).`,
-    };
+  const rows = parsed.data;
+  const isBlank = (row: string[]) => row.every((cell) => cell.trim() === "");
+  if (rows.length === 0 || rows.every(isBlank)) {
+    return { ok: false, error: "This CSV is empty." };
   }
+
+  const layout = resolveLayout(rows);
 
   const cards: Flashcard[] = [];
   const skipped: SkippedRow[] = [];
 
-  parsed.data.forEach((row, index) => {
-    // +2: one for the header row, one to make the line number 1-based.
-    const line = index + 2;
-    const japanese = (row.japanese ?? "").trim();
-    const english = (row.english ?? "").trim();
-    const folder = (row.folder ?? "").trim() || DEFAULT_FOLDER;
+  layout.dataRows.forEach((row, index) => {
+    const line = layout.firstDataLine + index;
+    const japanese = (row[layout.japanese] ?? "").trim();
+    const english = (row[layout.english] ?? "").trim();
+    const folder =
+      (layout.folder >= 0 ? row[layout.folder] ?? "" : "").trim() ||
+      DEFAULT_FOLDER;
 
     const missingFields: string[] = [];
     if (!japanese) missingFields.push("Japanese");
@@ -95,7 +131,7 @@ export function parseFlashcardsCsv(text: string): ParseResult {
       error:
         skipped.length > 0
           ? "No valid cards found — every row was missing a Japanese or English value."
-          : "This CSV has a header row but no card rows.",
+          : "This CSV has no card rows.",
     };
   }
 

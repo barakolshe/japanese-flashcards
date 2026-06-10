@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   addFolder as addFolderTo,
+  appendCards as appendCardsTo,
   deckFromCards,
   moveCard as moveCardIn,
   removeFolder as removeFolderFrom,
@@ -33,6 +34,8 @@ type FlashcardsStore = {
   folders: string[];
   /** Replace the current deck with a freshly parsed set of cards. */
   loadCards: (cards: Flashcard[]) => void;
+  /** Append freshly imported cards to the current deck, keeping what's there. */
+  addCards: (cards: Flashcard[]) => void;
   /** Clear the loaded deck (back to the empty/upload state). */
   clear: () => void;
   /** Create a new, empty folder. Returns a validation error if the name is taken or blank. */
@@ -77,6 +80,9 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     (next: Flashcard[]) => setDeck(deckFromCards(next)),
     [],
   );
+  const addCards = useCallback((next: Flashcard[]) => {
+    setDeck((current) => appendCardsTo(current, next));
+  }, []);
   const clear = useCallback(() => setDeck(EMPTY_DECK), []);
 
   // add/rename validate and report back synchronously, so they run against the
@@ -113,6 +119,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       cards: deck.cards,
       folders: deck.folders,
       loadCards,
+      addCards,
       clear,
       addFolder,
       renameFolder,
@@ -123,6 +130,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       hydrated,
       deck,
       loadCards,
+      addCards,
       clear,
       addFolder,
       renameFolder,

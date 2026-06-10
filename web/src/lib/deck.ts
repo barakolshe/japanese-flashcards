@@ -28,6 +28,22 @@ export function deckFromCards(cards: Flashcard[]): Deck {
   return { cards, folders: folderNames(cards) };
 }
 
+/**
+ * Append freshly imported cards to an existing deck, keeping the current cards
+ * and folders and adding any new folders the imported cards introduce (in
+ * first-seen order, after the existing ones). Existing folders are matched
+ * case-insensitively so a re-import doesn't create a near-duplicate folder.
+ */
+export function appendCards(deck: Deck, cards: Flashcard[]): Deck {
+  const folders = [...deck.folders];
+  for (const folder of folderNames(cards)) {
+    if (!folders.some((existing) => key(existing) === key(folder))) {
+      folders.push(folder);
+    }
+  }
+  return { cards: [...deck.cards, ...cards], folders };
+}
+
 /** Number of cards in each folder, keyed by folder name. */
 export function folderCounts(deck: Deck): Map<string, number> {
   const counts = new Map<string, number>();
