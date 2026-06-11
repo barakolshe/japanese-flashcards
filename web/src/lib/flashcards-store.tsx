@@ -10,13 +10,16 @@ import {
 } from "react";
 import {
   addFolder as addFolderTo,
+  addFolderTag as addFolderTagTo,
   appendCards as appendCardsTo,
   deckFromCards,
   moveCard as moveCardIn,
   removeFolder as removeFolderFrom,
+  removeFolderTag as removeFolderTagFrom,
   renameFolder as renameFolderIn,
   type Deck,
   type DeckResult,
+  type Tag,
 } from "./deck";
 import {
   clearStoredDeck,
@@ -39,6 +42,10 @@ type FlashcardsStore = {
   cards: Flashcard[];
   /** Every folder cards can be sorted into, including freshly created empty ones. */
   folders: string[];
+  /** The tags in use across folders, with their colors, in creation order. */
+  tags: Tag[];
+  /** Tag names pinned to each folder, keyed by folder name. */
+  folderTags: Record<string, string[]>;
   /** Which side cards show first; persisted alongside the deck. */
   front: CardFront;
   /** Change which side leads, persisting the choice. */
@@ -57,11 +64,15 @@ type FlashcardsStore = {
   removeFolder: (name: string) => void;
   /** Move a single card into a folder (creating that folder if it's new). */
   moveCard: (cardId: string, folder: string) => void;
+  /** Pin a tag to a folder, creating it with the given color if it's new. */
+  addFolderTag: (folder: string, name: string, color: string) => DeckResult;
+  /** Unpin a tag from a folder; a tag left on no folders disappears. */
+  removeFolderTag: (folder: string, name: string) => void;
 };
 
 const FlashcardsContext = createContext<FlashcardsStore | null>(null);
 
-const EMPTY_DECK: Deck = { cards: [], folders: [] };
+const EMPTY_DECK: Deck = { cards: [], folders: [], tags: [], folderTags: {} };
 
 function isEmptyDeck(deck: Deck): boolean {
   return deck.cards.length === 0 && deck.folders.length === 0;
@@ -142,11 +153,28 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     setDeck((current) => moveCardIn(current, cardId, folder));
   }, []);
 
+  // Validates against the current deck and reports back synchronously, like
+  // addFolder, so the UI can surface a blank-name error inline.
+  const addFolderTag = useCallback(
+    (folder: string, name: string, color: string): DeckResult => {
+      const result = addFolderTagTo(deck, folder, name, color);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
+  const removeFolderTag = useCallback((folder: string, name: string) => {
+    setDeck((current) => removeFolderTagFrom(current, folder, name));
+  }, []);
+
   const value = useMemo<FlashcardsStore>(
     () => ({
       hydrated,
       cards: deck.cards,
       folders: deck.folders,
+      tags: deck.tags,
+      folderTags: deck.folderTags,
       front,
       setFront,
       loadCards,
@@ -156,6 +184,8 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       renameFolder,
       removeFolder,
       moveCard,
+      addFolderTag,
+      removeFolderTag,
     }),
     [
       hydrated,
@@ -168,6 +198,8 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       renameFolder,
       removeFolder,
       moveCard,
+      addFolderTag,
+      removeFolderTag,
     ],
   );
 

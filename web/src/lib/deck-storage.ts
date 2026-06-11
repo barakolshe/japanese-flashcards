@@ -1,5 +1,5 @@
 import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
-import type { Deck } from "./deck";
+import type { Deck, Tag } from "./deck";
 import { getDb } from "./firebase";
 import type { Flashcard } from "./flashcards";
 import type { CardFront } from "./study-direction";
@@ -42,15 +42,67 @@ function isFlashcard(value: unknown): value is Flashcard {
   );
 }
 
-function isDeck(value: unknown): value is Deck {
+function isTag(value: unknown): value is Tag {
+  if (typeof value !== "object" || value === null) return false;
+  const tag = value as Record<string, unknown>;
+  return typeof tag.name === "string" && typeof tag.color === "string";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isFolderTags(value: unknown): value is Record<string, string[]> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(isStringArray);
+}
+
+/**
+ * The deck shape as it may appear in storage: `tags`/`folderTags` are optional so
+ * decks saved before tagging existed still validate and load (normalized to empty
+ * tag state by {@link normalizeDeck}).
+ */
+type StoredDeck = {
+  cards: Flashcard[];
+  folders: string[];
+  tags?: Tag[];
+  folderTags?: Record<string, string[]>;
+};
+
+function isStoredDeck(value: unknown): value is StoredDeck {
   if (typeof value !== "object" || value === null) return false;
   const deck = value as Record<string, unknown>;
-  return (
-    Array.isArray(deck.cards) &&
-    deck.cards.every(isFlashcard) &&
-    Array.isArray(deck.folders) &&
-    deck.folders.every((folder) => typeof folder === "string")
-  );
+  if (!(Array.isArray(deck.cards) && deck.cards.every(isFlashcard))) {
+    return false;
+  }
+  if (
+    !(Array.isArray(deck.folders) &&
+      deck.folders.every((folder) => typeof folder === "string"))
+  ) {
+    return false;
+  }
+  if (
+    deck.tags !== undefined &&
+    !(Array.isArray(deck.tags) && deck.tags.every(isTag))
+  ) {
+    return false;
+  }
+  if (deck.folderTags !== undefined && !isFolderTags(deck.folderTags)) {
+    return false;
+  }
+  return true;
+}
+
+/** Fill in tag fields a pre-tagging deck won't have, so callers get a full Deck. */
+function normalizeDeck(deck: StoredDeck): Deck {
+  return {
+    cards: deck.cards,
+    folders: deck.folders,
+    tags: deck.tags ?? [],
+    folderTags: deck.folderTags ?? {},
+  };
 }
 
 /**
@@ -70,8 +122,8 @@ export async function loadStoredDeck(): Promise<Deck | null> {
     return null;
   }
   if (!data || data.version !== STORAGE_VERSION) return null;
-  if (!isDeck(data.deck)) return null;
-  return data.deck;
+  if (!isStoredDeck(data.deck)) return null;
+  return normalizeDeck(data.deck);
 }
 
 /** Persist the deck, silently ignoring write errors (offline, rules, etc.). */

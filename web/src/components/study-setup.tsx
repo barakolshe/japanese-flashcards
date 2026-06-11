@@ -9,7 +9,9 @@ import {
 import { useFlashcards } from "@/lib/flashcards-store";
 import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
+import type { Tag } from "@/lib/deck";
 import { ImportNotice } from "./csv-upload";
+import { TagDot, tagTint } from "./tags";
 
 type StudySetupProps = {
   /** Which side cards show first. */
@@ -54,11 +56,21 @@ export function StudySetup({
   onStart,
   onOrganize,
 }: StudySetupProps) {
-  const { cards, addCards, clear } = useFlashcards();
+  const { cards, tags, folderTags, addCards, clear } = useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const folders = folderCounts(cards);
   const hasFolderChoice = folders.length > 1;
   const importer = useCsvImport(addCards);
+
+  // Narrow the folder list to those carrying the chosen tag (case-insensitive).
+  const visibleFolders = tagFilter
+    ? folders.filter(({ folder }) =>
+        (folderTags[folder] ?? []).some(
+          (name) => name.toLowerCase() === tagFilter.toLowerCase(),
+        ),
+      )
+    : folders;
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -162,24 +174,90 @@ export function StudySetup({
       {hasFolderChoice ? (
         <div className="mt-8">
           <h3 className="text-sm font-medium text-muted">Or focus on a folder</h3>
-          <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {folders.map(({ folder, count }) => (
-              <li key={folder}>
-                <button
-                  type="button"
-                  onClick={() => onStart(folder)}
-                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  <span className="font-medium text-ink">{folder}</span>
-                  <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
-                    {count}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+
+          {tags.length > 0 ? (
+            <TagFilter
+              tags={tags}
+              active={tagFilter}
+              onSelect={setTagFilter}
+            />
+          ) : null}
+
+          {visibleFolders.length > 0 ? (
+            <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {visibleFolders.map(({ folder, count }) => (
+                <li key={folder}>
+                  <button
+                    type="button"
+                    onClick={() => onStart(folder)}
+                    className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    <span className="font-medium text-ink">{folder}</span>
+                    <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
+                      {count}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+              No folders with cards are tagged{" "}
+              <span className="font-medium text-ink">{tagFilter}</span>.
+            </p>
+          )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Filter the folder list by tag. "All" clears the filter; selecting the active
+ * tag again also clears it. Each tag carries its color on a dot, and the active
+ * chip tints in that color.
+ */
+function TagFilter({
+  tags,
+  active,
+  onSelect,
+}: {
+  tags: Tag[];
+  active: string | null;
+  onSelect: (tag: string | null) => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        aria-pressed={active === null}
+        onClick={() => onSelect(null)}
+        className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+          active === null
+            ? "border-primary bg-primary/[0.08] text-primary"
+            : "border-border bg-surface text-ink hover:border-ink/30"
+        }`}
+      >
+        All
+      </button>
+      {tags.map((tag) => {
+        const isActive = active?.toLowerCase() === tag.name.toLowerCase();
+        return (
+          <button
+            key={tag.name}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onSelect(isActive ? null : tag.name)}
+            style={isActive ? tagTint(tag.color) : undefined}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              isActive ? "" : "border-border bg-surface hover:border-ink/30"
+            }`}
+          >
+            <TagDot color={tag.color} />
+            {tag.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

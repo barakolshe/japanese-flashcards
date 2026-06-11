@@ -1,5 +1,13 @@
 import { DEFAULT_FOLDER, folderNames, type Flashcard } from "./flashcards";
 
+/** A tag the user can pin to folders, with a color from the tag palette. */
+export type Tag = {
+  /** Display name as first typed; compared case-insensitively elsewhere. */
+  name: string;
+  /** CSS color value (from `tag-colors`) used to paint the tag. */
+  color: string;
+};
+
 /**
  * A working deck: the loaded cards plus the list of folders the user can sort
  * them into. Folders are tracked separately from cards so a freshly created
@@ -7,10 +15,17 @@ import { DEFAULT_FOLDER, folderNames, type Flashcard } from "./flashcards";
  * otherwise have nothing to anchor it. The list always contains every folder
  * referenced by a card, in first-seen order, followed by any empty folders the
  * user has added.
+ *
+ * Folders can be tagged: `tags` is the catalog of tags currently in use (with
+ * their colors, in creation order) and `folderTags` maps a folder name to the
+ * tag names pinned to it. Tags exist only while assigned — dropping a tag from
+ * its last folder removes it from the catalog.
  */
 export type Deck = {
   cards: Flashcard[];
   folders: string[];
+  tags: Tag[];
+  folderTags: Record<string, string[]>;
 };
 
 /** Result of a folder operation that can fail validation. */
@@ -25,7 +40,29 @@ function key(name: string): string {
 
 /** Build a fresh deck from a parsed set of cards. */
 export function deckFromCards(cards: Flashcard[]): Deck {
-  return { cards, folders: folderNames(cards) };
+  return { cards, folders: folderNames(cards), tags: [], folderTags: {} };
+}
+
+/** The tag keys still pinned to at least one of the given folders. */
+function usedTagKeys(
+  folders: string[],
+  folderTags: Record<string, string[]>,
+): Set<string> {
+  const used = new Set<string>();
+  for (const folder of folders) {
+    for (const tag of folderTags[folder] ?? []) used.add(key(tag));
+  }
+  return used;
+}
+
+/** Drop tags from the catalog that no folder references anymore. */
+function pruneTags(
+  tags: Tag[],
+  folders: string[],
+  folderTags: Record<string, string[]>,
+): Tag[] {
+  const used = usedTagKeys(folders, folderTags);
+  return tags.filter((tag) => used.has(key(tag.name)));
 }
 
 /**
@@ -41,7 +78,12 @@ export function appendCards(deck: Deck, cards: Flashcard[]): Deck {
       folders.push(folder);
     }
   }
-  return { cards: [...deck.cards, ...cards], folders };
+  return {
+    cards: [...deck.cards, ...cards],
+    folders,
+    tags: deck.tags,
+    folderTags: deck.folderTags,
+  };
 }
 
 /** Number of cards in each folder, keyed by folder name. */
@@ -92,6 +134,12 @@ export function renameFolder(
   if (collides) {
     return { ok: false, error: `A folder named "${trimmed}" already exists.` };
   }
+  // Carry the folder's tags over to its new name.
+  const folderTags = { ...deck.folderTags };
+  if (oldName !== trimmed && oldName in folderTags) {
+    folderTags[trimmed] = folderTags[oldName];
+    delete folderTags[oldName];
+  }
   return {
     ok: true,
     deck: {
@@ -101,6 +149,8 @@ export function renameFolder(
       folders: deck.folders.map((folder) =>
         folder === oldName ? trimmed : folder,
       ),
+      tags: deck.tags,
+      folderTags,
     },
   };
 }
@@ -121,7 +171,15 @@ export function removeFolder(deck: Deck, name: string): Deck {
   if (hasCards && !folders.includes(DEFAULT_FOLDER)) {
     folders = [...folders, DEFAULT_FOLDER];
   }
-  return { cards, folders };
+  // The folder's tags go with it; any tag left on no folders drops out.
+  const folderTags = { ...deck.folderTags };
+  delete folderTags[name];
+  return {
+    cards,
+    folders,
+    tags: pruneTags(deck.tags, folders, folderTags),
+    folderTags,
+  };
 }
 
 /**
@@ -138,5 +196,81 @@ export function moveCard(deck: Deck, cardId: string, folder: string): Deck {
       card.id === cardId ? { ...card, folder: target } : card,
     ),
     folders,
+    tags: deck.tags,
+    folderTags: deck.folderTags,
+  };
+}
+
+/** The color of a tag, looked up case-insensitively (undefined if unknown). */
+export function tagColor(deck: Deck, name: string): string | undefined {
+  return deck.tags.find((tag) => key(tag.name) === key(name))?.color;
+}
+
+/** Tag names pinned to a folder, in assignment order (empty if none). */
+export function tagsForFolder(deck: Deck, folder: string): string[] {
+  return deck.folderTags[folder] ?? [];
+}
+
+/** Folders carrying a given tag, in folder order. */
+export function foldersForTag(deck: Deck, name: string): string[] {
+  return deck.folders.filter((folder) =>
+    (deck.folderTags[folder] ?? []).some((tag) => key(tag) === key(name)),
+  );
+}
+
+/**
+ * Pin a tag to a folder, creating it with `color` if the name is new to the
+ * deck. A name matching an existing tag reuses that tag's spelling and color, so
+ * `color` only applies to genuinely new tags. Re-adding a tag the folder already
+ * has is a no-op. Rejects a blank name or an unknown folder.
+ */
+export function addFolderTag(
+  deck: Deck,
+  folder: string,
+  name: string,
+  color: string,
+): DeckResult {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Tag name can't be empty." };
+  }
+  if (!deck.folders.includes(folder)) {
+    return { ok: false, error: `There's no folder named "${folder}".` };
+  }
+  const existing = deck.tags.find((tag) => key(tag.name) === key(trimmed));
+  const canonical = existing ? existing.name : trimmed;
+  const current = deck.folderTags[folder] ?? [];
+  if (current.some((tag) => key(tag) === key(canonical))) {
+    return { ok: true, deck };
+  }
+  return {
+    ok: true,
+    deck: {
+      ...deck,
+      tags: existing ? deck.tags : [...deck.tags, { name: trimmed, color }],
+      folderTags: { ...deck.folderTags, [folder]: [...current, canonical] },
+    },
+  };
+}
+
+/**
+ * Unpin a tag from a folder. A folder left with no tags drops its entry, and a
+ * tag left on no folders drops out of the catalog. Unknown folder or tag is a
+ * no-op.
+ */
+export function removeFolderTag(deck: Deck, folder: string, name: string): Deck {
+  const current = deck.folderTags[folder];
+  if (!current) return deck;
+  const next = current.filter((tag) => key(tag) !== key(name));
+  if (next.length === current.length) return deck;
+
+  const folderTags = { ...deck.folderTags };
+  if (next.length === 0) delete folderTags[folder];
+  else folderTags[folder] = next;
+
+  return {
+    ...deck,
+    folderTags,
+    tags: pruneTags(deck.tags, deck.folders, folderTags),
   };
 }

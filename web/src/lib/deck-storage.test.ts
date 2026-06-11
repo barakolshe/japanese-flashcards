@@ -51,6 +51,8 @@ const sampleDeck: Deck = {
     { id: "2", japanese: "猫", english: "cat", folder: "Animals" },
   ],
   folders: ["Animals", "Phrases"],
+  tags: [{ name: "JLPT", color: "oklch(0.62 0.16 18)" }],
+  folderTags: { Animals: ["JLPT"] },
 };
 
 beforeEach(() => {
@@ -95,6 +97,38 @@ describe("loadStoredDeck validation", () => {
     mocks.store.set(DECK_PATH, {
       version: 1,
       deck: { cards: [], folders: [1, 2] },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("loads a pre-tagging deck, filling in empty tag state", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: {
+        cards: [{ id: "1", japanese: "犬", english: "dog", folder: "Animals" }],
+        folders: ["Animals"],
+      },
+    });
+    expect(await loadStoredDeck()).toEqual({
+      cards: [{ id: "1", japanese: "犬", english: "dog", folder: "Animals" }],
+      folders: ["Animals"],
+      tags: [],
+      folderTags: {},
+    });
+  });
+
+  it("discards a deck whose tags are malformed", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: { cards: [], folders: [], tags: [{ name: "JLPT" }], folderTags: {} },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("discards a deck whose folderTags isn't a map of string arrays", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: { cards: [], folders: [], tags: [], folderTags: { Animals: [1] } },
     });
     expect(await loadStoredDeck()).toBeNull();
   });
