@@ -1,35 +1,27 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
-import {
-  folderNames,
-  serializeFlashcardsCsv,
-  type Flashcard,
-} from "@/lib/flashcards";
+import { useId, useMemo, useRef, useState } from "react";
+import { serializeFlashcardsCsv, type Flashcard } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
+import type { Folder, Tag } from "@/lib/deck";
+import type { StudyTarget } from "./deck-study";
 import { ImportNotice } from "./csv-upload";
+import { TagDot, tagTint } from "./tags";
 
 type StudySetupProps = {
   /** Which side cards show first. */
   front: CardFront;
   /** Change which side leads. */
   onFrontChange: (front: CardFront) => void;
-  /** Begin a session: `null` studies the whole deck, a string studies one folder. */
-  onStart: (folder: string | null) => void;
-  /** Open the organize screen to sort cards into folders. */
+  /** Begin a session for the chosen target (whole deck, a collection, or a folder). */
+  onStart: (target: StudyTarget) => void;
+  /** Open the organize screen to sort cards into collections and folders. */
   onOrganize: () => void;
 };
 
 const EXPORT_FILENAME = "flashcards.csv";
-
-function folderCounts(cards: Flashcard[]): { folder: string; count: number }[] {
-  return folderNames(cards).map((folder) => ({
-    folder,
-    count: cards.filter((card) => card.folder === folder).length,
-  }));
-}
 
 /**
  * Download the deck as a CSV file. A leading BOM keeps the Japanese readable
@@ -54,11 +46,48 @@ export function StudySetup({
   onStart,
   onOrganize,
 }: StudySetupProps) {
-  const { cards, addCards, clear } = useFlashcards();
+  const { cards, collections, folders, tags, collectionTags, addCards, clear } =
+    useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const folders = folderCounts(cards);
-  const hasFolderChoice = folders.length > 1;
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const importer = useCsvImport(addCards);
+
+  const counts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const collection of collections) map.set(collection, 0);
+    for (const card of cards) {
+      map.set(card.collection, (map.get(card.collection) ?? 0) + 1);
+    }
+    return map;
+  }, [cards, collections]);
+
+  const filed = useMemo(() => {
+    const set = new Set<string>();
+    for (const folder of folders) {
+      for (const collection of folder.collections) set.add(collection);
+    }
+    return set;
+  }, [folders]);
+
+  const ungrouped = useMemo(
+    () => collections.filter((collection) => !filed.has(collection)),
+    [collections, filed],
+  );
+
+  // Collections carrying the selected tag, across all folders (flattened).
+  const taggedCollections = useMemo(
+    () =>
+      tagFilter
+        ? collections.filter((collection) =>
+            (collectionTags[collection] ?? []).some(
+              (name) => name.toLowerCase() === tagFilter.toLowerCase(),
+            ),
+          )
+        : [],
+    [tagFilter, collections, collectionTags],
+  );
+
+  const hasFocusOptions = folders.length > 0 || collections.length > 1;
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -121,8 +150,8 @@ export function StudySetup({
           role="status"
           className="mt-3 text-right text-sm text-muted motion-safe:animate-[rise_0.16s_var(--ease-out-quart)]"
         >
-          This erases the saved deck and your folder organization. Export first
-          if you want to keep it.
+          This erases the saved deck and your collections and folders. Export
+          first if you want to keep it.
         </p>
       ) : null}
 
@@ -153,33 +182,197 @@ export function StudySetup({
 
       <button
         type="button"
-        onClick={() => onStart(null)}
+        onClick={() => onStart({ kind: "all" })}
         className="mt-4 w-full rounded-xl bg-primary px-5 py-4 text-lg font-semibold text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Study all {cards.length} cards
       </button>
 
-      {hasFolderChoice ? (
-        <div className="mt-8">
-          <h3 className="text-sm font-medium text-muted">Or focus on a folder</h3>
-          <ul className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {folders.map(({ folder, count }) => (
-              <li key={folder}>
-                <button
-                  type="button"
-                  onClick={() => onStart(folder)}
-                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                >
-                  <span className="font-medium text-ink">{folder}</span>
-                  <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
-                    {count}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+      {hasFocusOptions ? (
+        <div className="mt-8 space-y-6">
+          <h3 className="text-sm font-medium text-muted">
+            Or focus on a folder or collection
+          </h3>
+
+          {tags.length > 0 ? (
+            <TagFilter tags={tags} active={tagFilter} onSelect={setTagFilter} />
+          ) : null}
+
+          {tagFilter ? (
+            taggedCollections.length > 0 ? (
+              <CollectionGrid
+                collections={taggedCollections}
+                counts={counts}
+                onStart={onStart}
+              />
+            ) : (
+              <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+                No collections are tagged{" "}
+                <span className="font-medium text-ink">{tagFilter}</span>.
+              </p>
+            )
+          ) : (
+            <>
+              {folders.map((folder) => (
+                <FolderGroup
+                  key={folder.name}
+                  folder={folder}
+                  counts={counts}
+                  onStart={onStart}
+                />
+              ))}
+
+              {ungrouped.length > 0 ? (
+                <div>
+                  {folders.length > 0 ? (
+                    <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted/80">
+                      Ungrouped
+                    </p>
+                  ) : null}
+                  <CollectionGrid
+                    collections={ungrouped}
+                    counts={counts}
+                    onStart={onStart}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * One folder in the focus list: a header that studies the whole folder, with its
+ * collections beneath as their own study targets.
+ */
+function FolderGroup({
+  folder,
+  counts,
+  onStart,
+}: {
+  folder: Folder;
+  counts: Map<string, number>;
+  onStart: (target: StudyTarget) => void;
+}) {
+  const total = folder.collections.reduce(
+    (sum, collection) => sum + (counts.get(collection) ?? 0),
+    0,
+  );
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onStart({ kind: "folder", name: folder.name })}
+        disabled={total === 0}
+        className="group flex w-full items-center gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-60"
+      >
+        <FolderIcon className="shrink-0 text-muted transition-colors group-hover:text-primary" />
+        <span className="min-w-0 flex-1 truncate font-semibold text-ink">
+          {folder.name}
+        </span>
+        <span className="shrink-0 text-xs text-muted">
+          {total === 0 ? "Empty" : `Study all ${total}`}
+        </span>
+      </button>
+
+      {folder.collections.length > 0 ? (
+        <div className="mt-2.5 pl-3">
+          <CollectionGrid
+            collections={folder.collections}
+            counts={counts}
+            onStart={onStart}
+          />
+        </div>
+      ) : (
+        <p className="mt-2 pl-3 text-sm text-muted">No collections yet.</p>
+      )}
+    </div>
+  );
+}
+
+/** A responsive grid of collection buttons, each starting a single-collection session. */
+function CollectionGrid({
+  collections,
+  counts,
+  onStart,
+}: {
+  collections: string[];
+  counts: Map<string, number>;
+  onStart: (target: StudyTarget) => void;
+}) {
+  return (
+    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      {collections.map((collection) => (
+        <li key={collection}>
+          <button
+            type="button"
+            onClick={() => onStart({ kind: "collection", name: collection })}
+            className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <span className="min-w-0 truncate font-medium text-ink">
+              {collection}
+            </span>
+            <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
+              {counts.get(collection) ?? 0}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Filter the focus list by tag. "All" clears the filter; selecting the active
+ * tag again also clears it. Each tag carries its color on a dot, and the active
+ * chip tints in that color. With a tag selected, the list flattens to every
+ * collection carrying it, across folders.
+ */
+function TagFilter({
+  tags,
+  active,
+  onSelect,
+}: {
+  tags: Tag[];
+  active: string | null;
+  onSelect: (tag: string | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        aria-pressed={active === null}
+        onClick={() => onSelect(null)}
+        className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+          active === null
+            ? "border-primary bg-primary/[0.08] text-primary"
+            : "border-border bg-surface text-ink hover:border-ink/30"
+        }`}
+      >
+        All
+      </button>
+      {tags.map((tag) => {
+        const isActive = active?.toLowerCase() === tag.name.toLowerCase();
+        return (
+          <button
+            key={tag.name}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onSelect(isActive ? null : tag.name)}
+            style={isActive ? tagTint(tag.color) : undefined}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              isActive ? "" : "border-border bg-surface hover:border-ink/30"
+            }`}
+          >
+            <TagDot color={tag.color} />
+            {tag.name}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -336,7 +529,7 @@ function SpinnerIcon() {
   );
 }
 
-function FolderIcon() {
+function FolderIcon({ className }: { className?: string }) {
   return (
     <svg
       width="16"
@@ -348,6 +541,7 @@ function FolderIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
+      className={className}
     >
       <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />
     </svg>

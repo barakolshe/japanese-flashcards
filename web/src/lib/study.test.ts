@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Flashcard } from "./flashcards";
-import { selectDeck, shuffle } from "./study";
+import { selectDeck, selectDeckByCollections, shuffle } from "./study";
 
 /** A random source that yields a fixed sequence, looping if exhausted. */
 function sequence(values: number[]): () => number {
@@ -48,21 +48,46 @@ describe("shuffle", () => {
 
 describe("selectDeck", () => {
   const cards: Flashcard[] = [
-    { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
-    { id: "2", japanese: "犬", english: "dog", folder: "Animals" },
-    { id: "3", japanese: "本", english: "book", folder: "Objects" },
+    { id: "1", japanese: "猫", english: "cat", collection: "Animals" },
+    { id: "2", japanese: "犬", english: "dog", collection: "Animals" },
+    { id: "3", japanese: "本", english: "book", collection: "Objects" },
   ];
 
-  it("returns every card when the folder is null", () => {
+  it("returns every card when the collection is null", () => {
     expect(selectDeck(cards, null)).toEqual(cards);
   });
 
-  it("returns only the cards in the chosen folder, in order", () => {
+  it("returns only the cards in the chosen collection, in order", () => {
     expect(selectDeck(cards, "Animals")).toEqual([cards[0], cards[1]]);
     expect(selectDeck(cards, "Objects")).toEqual([cards[2]]);
   });
 
-  it("returns an empty array for an unknown folder", () => {
+  it("returns an empty array for an unknown collection", () => {
     expect(selectDeck(cards, "Verbs")).toEqual([]);
+  });
+});
+
+describe("selectDeckByCollections", () => {
+  const cards: Flashcard[] = [
+    { id: "1", japanese: "猫", english: "cat", collection: "Mammals" },
+    { id: "2", japanese: "鳥", english: "bird", collection: "Birds" },
+    { id: "3", japanese: "本", english: "book", collection: "Objects" },
+  ];
+
+  it("returns cards across all the given collections, in order", () => {
+    expect(selectDeckByCollections(cards, ["Mammals", "Birds"])).toEqual([
+      cards[0],
+      cards[1],
+    ]);
+  });
+
+  it("returns an empty array when no collections are given", () => {
+    expect(selectDeckByCollections(cards, [])).toEqual([]);
+  });
+
+  it("ignores collection names with no matching cards", () => {
+    expect(selectDeckByCollections(cards, ["Objects", "Ghosts"])).toEqual([
+      cards[2],
+    ]);
   });
 });
