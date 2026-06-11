@@ -18,12 +18,19 @@ import {
   type Deck,
   type DeckResult,
 } from "./deck";
-import { clearStoredDeck, loadStoredDeck, saveDeck } from "./deck-storage";
+import {
+  clearStoredDeck,
+  loadStoredDeck,
+  loadStoredFront,
+  saveDeck,
+  saveFront,
+} from "./deck-storage";
 import type { Flashcard } from "./flashcards";
+import type { CardFront } from "./study-direction";
 
 type FlashcardsStore = {
   /**
-   * Whether the saved deck has been read from localStorage yet. `false` on the
+   * Whether the saved state has been read from Firestore yet. `false` on the
    * first render (and during SSR); the UI waits for it before deciding between
    * the upload and study screens so a saved deck doesn't flash the upload view.
    */
@@ -32,6 +39,10 @@ type FlashcardsStore = {
   cards: Flashcard[];
   /** Every folder cards can be sorted into, including freshly created empty ones. */
   folders: string[];
+  /** Which side cards show first; persisted alongside the deck. */
+  front: CardFront;
+  /** Change which side leads, persisting the choice. */
+  setFront: (front: CardFront) => void;
   /** Replace the current deck with a freshly parsed set of cards. */
   loadCards: (cards: Flashcard[]) => void;
   /** Append freshly imported cards to the current deck, keeping what's there. */
@@ -58,23 +69,41 @@ function isEmptyDeck(deck: Deck): boolean {
 
 export function FlashcardsProvider({ children }: { children: React.ReactNode }) {
   const [deck, setDeck] = useState<Deck>(EMPTY_DECK);
+  const [front, setFront] = useState<CardFront>("japanese");
   const [hydrated, setHydrated] = useState(false);
 
-  // Restore the saved deck once, on the client. Reading localStorage during
-  // render would mismatch the server-rendered (empty) HTML, so we do it here.
+  // Restore the saved deck and study direction once, on the client. Firestore
+  // reads are async, so we resolve both before flipping `hydrated` — the UI
+  // stays on its loading placeholder until the real state is in hand, which
+  // also keeps the direction toggle from flashing its default then correcting.
   useEffect(() => {
-    const stored = loadStoredDeck();
-    if (stored) setDeck(stored);
-    setHydrated(true);
+    let cancelled = false;
+    void Promise.all([loadStoredDeck(), loadStoredFront()]).then(
+      ([storedDeck, storedFront]) => {
+        if (cancelled) return;
+        if (storedDeck) setDeck(storedDeck);
+        if (storedFront) setFront(storedFront);
+        setHydrated(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Persist on every change once hydrated. Guarding on `hydrated` keeps the
-  // initial empty deck from clobbering a saved one before it's restored.
+  // Persist the deck on every change once hydrated. Guarding on `hydrated` keeps
+  // the initial empty deck from clobbering a saved one before it's restored.
   useEffect(() => {
     if (!hydrated) return;
-    if (isEmptyDeck(deck)) clearStoredDeck();
-    else saveDeck(deck);
+    if (isEmptyDeck(deck)) void clearStoredDeck();
+    else void saveDeck(deck);
   }, [deck, hydrated]);
+
+  // Persist the direction the same way, once the saved one has been restored.
+  useEffect(() => {
+    if (!hydrated) return;
+    void saveFront(front);
+  }, [front, hydrated]);
 
   const loadCards = useCallback(
     (next: Flashcard[]) => setDeck(deckFromCards(next)),
@@ -118,6 +147,8 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       hydrated,
       cards: deck.cards,
       folders: deck.folders,
+      front,
+      setFront,
       loadCards,
       addCards,
       clear,
@@ -129,6 +160,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     [
       hydrated,
       deck,
+      front,
       loadCards,
       addCards,
       clear,

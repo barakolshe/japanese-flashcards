@@ -1,35 +1,34 @@
+import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import type { Deck } from "./deck";
+import { getDb } from "./firebase";
 import type { Flashcard } from "./flashcards";
 import type { CardFront } from "./study-direction";
 
 /**
- * Local persistence for the user's deck and study preferences. The deck is the
- * user's main state, so we save it to `localStorage` after every change and
- * reload it on the next visit — no account, no server, no sync. The stored value
- * is versioned so the shape can evolve; anything we can't read back cleanly is
- * discarded rather than surfaced as a half-broken deck.
+ * Remote persistence for the user's deck and study preference, backed by
+ * Firestore. The app is single-user with no accounts, so the entire state lives
+ * in two fixed documents — one for the deck, one for the "show first" direction —
+ * not a per-user collection. The deck is the user's main state, saved after
+ * every change and reloaded on the next visit (here or on another device).
+ *
+ * The stored deck is versioned so the shape can evolve; anything we can't read
+ * back cleanly — wrong version, wrong shape, or a network/permission error — is
+ * treated as "nothing saved" rather than surfaced as a half-broken deck.
  */
 
-/** Bump when the stored shape changes incompatibly; older payloads are dropped. */
+/** Bump when the stored deck shape changes incompatibly; older payloads are dropped. */
 const STORAGE_VERSION = 1;
-const STORAGE_KEY = "flashcards:deck:v1";
-/** The "show first" study direction is a standalone preference, not deck data. */
-const FRONT_STORAGE_KEY = "flashcards:front:v1";
+/** Single document each, since there's exactly one user and one of everything. */
+const COLLECTION = "flashcards";
+const DECK_DOC = "deck";
+const FRONT_DOC = "front";
 
-type StoredDeck = {
-  version: number;
-  deck: Deck;
-};
+function deckRef() {
+  return doc(getDb(), COLLECTION, DECK_DOC);
+}
 
-/** Whether `localStorage` is usable (it isn't during SSR or in locked-down browsers). */
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    // Accessing localStorage can throw when cookies/storage are blocked.
-    return null;
-  }
+function frontRef() {
+  return doc(getDb(), COLLECTION, FRONT_DOC);
 }
 
 function isFlashcard(value: unknown): value is Flashcard {
@@ -55,82 +54,62 @@ function isDeck(value: unknown): value is Deck {
 }
 
 /**
- * Read the saved deck, or `null` if there's nothing valid to restore. Returns
- * `null` (never throws) on missing storage, corrupt JSON, an old version, or a
- * shape that no longer matches — the caller just starts from an empty deck.
+ * Read the saved deck, or `null` if there's nothing valid to restore. Resolves
+ * to `null` (never rejects) on a missing document, an old version, a shape that
+ * no longer matches, or a network/permission error — the caller just starts from
+ * an empty deck.
  */
-export function loadStoredDeck(): Deck | null {
-  const storage = getStorage();
-  if (!storage) return null;
-
-  let raw: string | null;
+export async function loadStoredDeck(): Promise<Deck | null> {
+  let data: Record<string, unknown> | undefined;
   try {
-    raw = storage.getItem(STORAGE_KEY);
+    const snap = await getDoc(deckRef());
+    if (!snap.exists()) return null;
+    data = snap.data();
   } catch {
+    // Offline, misconfigured, or denied by rules — restore nothing.
     return null;
   }
-  if (!raw) return null;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const stored = parsed as Partial<StoredDeck>;
-  if (stored.version !== STORAGE_VERSION) return null;
-  if (!isDeck(stored.deck)) return null;
-
-  return stored.deck;
+  if (!data || data.version !== STORAGE_VERSION) return null;
+  if (!isDeck(data.deck)) return null;
+  return data.deck;
 }
 
-/** Persist the deck, silently ignoring storage errors (e.g. quota, private mode). */
-export function saveDeck(deck: Deck): void {
-  const storage = getStorage();
-  if (!storage) return;
-
-  const payload: StoredDeck = { version: STORAGE_VERSION, deck };
+/** Persist the deck, silently ignoring write errors (offline, rules, etc.). */
+export async function saveDeck(deck: Deck): Promise<void> {
   try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    await setDoc(deckRef(), { version: STORAGE_VERSION, deck });
   } catch {
-    // Out of quota or storage disabled — nothing actionable for the user.
+    // Nothing actionable for the user mid-study; the change stays in memory.
   }
 }
 
-/** Forget the saved deck entirely (used by "Load a different file"). */
-export function clearStoredDeck(): void {
-  const storage = getStorage();
-  if (!storage) return;
+/** Forget the saved deck entirely (used when clearing back to the upload state). */
+export async function clearStoredDeck(): Promise<void> {
   try {
-    storage.removeItem(STORAGE_KEY);
+    await deleteDoc(deckRef());
   } catch {
     // Ignore — there's nothing the user can do about a failed delete.
   }
 }
 
 /** Read the saved "show first" direction, or `null` if none/invalid is stored. */
-export function loadStoredFront(): CardFront | null {
-  const storage = getStorage();
-  if (!storage) return null;
-
-  let raw: string | null;
+export async function loadStoredFront(): Promise<CardFront | null> {
+  let value: unknown;
   try {
-    raw = storage.getItem(FRONT_STORAGE_KEY);
+    const snap = await getDoc(frontRef());
+    if (!snap.exists()) return null;
+    value = snap.data().front;
   } catch {
     return null;
   }
-  return raw === "japanese" || raw === "english" ? raw : null;
+  return value === "japanese" || value === "english" ? value : null;
 }
 
-/** Persist the chosen "show first" direction so it survives a refresh. */
-export function saveFront(front: CardFront): void {
-  const storage = getStorage();
-  if (!storage) return;
+/** Persist the chosen "show first" direction so it survives a refresh or device. */
+export async function saveFront(front: CardFront): Promise<void> {
   try {
-    storage.setItem(FRONT_STORAGE_KEY, front);
+    await setDoc(frontRef(), { front });
   } catch {
-    // Out of quota or storage disabled — the preference just won't stick.
+    // The preference just won't stick; not worth interrupting the user.
   }
 }
