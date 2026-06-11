@@ -47,10 +47,13 @@ const {
 
 const sampleDeck: Deck = {
   cards: [
-    { id: "1", japanese: "犬", english: "dog", folder: "Animals" },
-    { id: "2", japanese: "猫", english: "cat", folder: "Animals" },
+    { id: "1", japanese: "犬", english: "dog", collection: "Animals" },
+    { id: "2", japanese: "猫", english: "cat", collection: "Animals" },
   ],
-  folders: ["Animals", "Phrases"],
+  collections: ["Animals", "Phrases"],
+  folders: [{ name: "Nature", collections: ["Animals"] }],
+  tags: [{ name: "JLPT", color: "oklch(0.62 0.16 18)" }],
+  collectionTags: { Animals: ["JLPT"] },
 };
 
 beforeEach(() => {
@@ -68,7 +71,7 @@ describe("saveDeck / loadStoredDeck", () => {
   it("stores a versioned payload, not the bare deck", async () => {
     await saveDeck(sampleDeck);
     const stored = mocks.store.get(DECK_PATH)!;
-    expect(stored.version).toBe(1);
+    expect(stored.version).toBe(2);
     expect(stored.deck).toEqual(sampleDeck);
   });
 
@@ -78,23 +81,107 @@ describe("saveDeck / loadStoredDeck", () => {
 });
 
 describe("loadStoredDeck validation", () => {
-  it("discards a payload from a different version", async () => {
+  it("discards a payload from an unknown future version", async () => {
     mocks.store.set(DECK_PATH, { version: 99, deck: sampleDeck });
     expect(await loadStoredDeck()).toBeNull();
   });
 
-  it("discards a deck with the wrong shape", async () => {
+  it("discards a deck with the wrong card shape", async () => {
     mocks.store.set(DECK_PATH, {
-      version: 1,
-      deck: { cards: [{ id: "1", japanese: "犬" }], folders: [] },
+      version: 2,
+      deck: { cards: [{ id: "1", japanese: "犬" }], collections: [], folders: [] },
     });
     expect(await loadStoredDeck()).toBeNull();
   });
 
-  it("discards a deck whose folders aren't all strings", async () => {
+  it("discards a deck whose collections aren't all strings", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: { cards: [], collections: [1, 2], folders: [] },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("discards a deck whose folders are malformed", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: { cards: [], collections: [], folders: [{ name: "x" }] },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("loads a pre-tagging v2 deck, filling in empty tag state", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: { cards: [], collections: ["Animals"], folders: [] },
+    });
+    expect(await loadStoredDeck()).toEqual({
+      cards: [],
+      collections: ["Animals"],
+      folders: [],
+      tags: [],
+      collectionTags: {},
+    });
+  });
+
+  it("discards a deck whose tags are malformed", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [],
+        collections: [],
+        folders: [],
+        tags: [{ name: "JLPT" }],
+        collectionTags: {},
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("discards a deck whose collectionTags isn't a map of string arrays", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [],
+        collections: [],
+        folders: [],
+        tags: [],
+        collectionTags: { Animals: [1] },
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+});
+
+describe("loadStoredDeck migration", () => {
+  it("migrates a version-1 deck to the collection/folder shape", async () => {
     mocks.store.set(DECK_PATH, {
       version: 1,
-      deck: { cards: [], folders: [1, 2] },
+      deck: {
+        cards: [
+          { id: "1", japanese: "犬", english: "dog", folder: "Animals" },
+          { id: "2", japanese: "本", english: "book", folder: "Objects" },
+        ],
+        folders: ["Animals", "Objects", "Empty"],
+      },
+    });
+
+    expect(await loadStoredDeck()).toEqual({
+      cards: [
+        { id: "1", japanese: "犬", english: "dog", collection: "Animals" },
+        { id: "2", japanese: "本", english: "book", collection: "Objects" },
+      ],
+      collections: ["Animals", "Objects", "Empty"],
+      folders: [],
+      tags: [],
+      collectionTags: {},
+    });
+  });
+
+  it("discards a version-1 payload that doesn't match the old shape", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: { cards: [{ id: "1", japanese: "犬" }], folders: [] },
     });
     expect(await loadStoredDeck()).toBeNull();
   });

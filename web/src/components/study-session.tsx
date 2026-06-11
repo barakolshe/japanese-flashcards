@@ -10,7 +10,7 @@ import { FlipCard } from "./flip-card";
 type StudySessionProps = {
   /** The cards to study this session (already narrowed to the chosen target). */
   deck: Flashcard[];
-  /** Human label for what's being studied — a folder name or "All cards". */
+  /** Human label for what's being studied — a collection or folder name, or "All cards". */
   title: string;
   /** Which side is the prompt and which is the reveal. */
   orientation: CardOrientation;
