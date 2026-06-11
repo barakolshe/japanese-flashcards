@@ -22,7 +22,7 @@ export default function Home() {
             {!hydrated
               ? "Loading your saved deck…"
               : hasDeck
-                ? "Pick a folder or the whole deck, then flip through your cards."
+                ? "Pick a collection, a folder, or the whole deck, then flip through your cards."
                 : "Upload a CSV of your words to build a deck of flip-and-shuffle flashcards."}
           </p>
         </header>

@@ -20,13 +20,26 @@ export function shuffle<T>(items: T[], random: () => number): T[] {
 }
 
 /**
- * The cards to study for a chosen target: every card when `folder` is `null`,
- * otherwise only the cards in that folder (in their existing order).
+ * The cards to study for a chosen target: every card when `collection` is
+ * `null`, otherwise only the cards in that collection (in their existing order).
  */
 export function selectDeck(
   cards: Flashcard[],
-  folder: string | null,
+  collection: string | null,
 ): Flashcard[] {
-  if (folder === null) return cards;
-  return cards.filter((card) => card.folder === folder);
+  if (collection === null) return cards;
+  return cards.filter((card) => card.collection === collection);
+}
+
+/**
+ * The cards to study for a whole folder: every card whose collection is one of
+ * `collections`, in their existing order. Used when focusing on a folder, which
+ * studies all the collections filed under it together.
+ */
+export function selectDeckByCollections(
+  cards: Flashcard[],
+  collections: string[],
+): Flashcard[] {
+  const set = new Set(collections);
+  return cards.filter((card) => set.has(card.collection));
 }

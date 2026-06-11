@@ -1,483 +1,637 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FOLDER, type Flashcard } from "./flashcards";
+import { DEFAULT_COLLECTION, type Flashcard } from "./flashcards";
 import {
   addCard,
+  addCollection,
+  addCollectionTag,
   addFolder,
-  addFolderTag,
   appendCards,
+  collectionCounts,
+  collectionsForTag,
   deckFromCards,
-  duplicateFolder,
-  folderCounts,
-  foldersForTag,
+  duplicateCollection,
+  folderOfCollection,
   moveCard,
+  moveCollection,
   removeCard,
+  removeCollection,
+  removeCollectionTag,
   removeFolder,
-  removeFolderTag,
+  renameCollection,
   renameFolder,
   tagColor,
-  tagsForFolder,
+  tagsForCollection,
+  ungroupedCollections,
   type Deck,
+  type Folder,
 } from "./deck";
 
-function card(id: string, folder: string): Flashcard {
-  return { id, japanese: `j${id}`, english: `e${id}`, folder };
+function card(id: string, collection: string): Flashcard {
+  return { id, japanese: `j${id}`, english: `e${id}`, collection };
 }
 
-/** A deck literal with empty tag state, to keep the older tests terse. */
-function deck(cards: Flashcard[], folders: string[]): Deck {
-  return { cards, folders, tags: [], folderTags: {} };
+/** A deck literal with empty tag state, to keep the model tests terse. */
+function mk(cards: Flashcard[], collections: string[], folders: Folder[]): Deck {
+  return { cards, collections, folders, tags: [], collectionTags: {} };
 }
 
 const RED = "oklch(0.62 0.16 18)";
 const BLUE = "oklch(0.55 0.12 255)";
 
 describe("deckFromCards", () => {
-  it("derives folders from the cards in first-seen order", () => {
-    const result = deckFromCards([
+  it("derives collections from the cards in first-seen order, no folders", () => {
+    const deck = deckFromCards([
       card("1", "Animals"),
       card("2", "Animals"),
       card("3", "Objects"),
     ]);
-    expect(result.folders).toEqual(["Animals", "Objects"]);
-    expect(result.tags).toEqual([]);
-    expect(result.folderTags).toEqual({});
+    expect(deck.collections).toEqual(["Animals", "Objects"]);
+    expect(deck.folders).toEqual([]);
+    expect(deck.tags).toEqual([]);
+    expect(deck.collectionTags).toEqual({});
   });
 });
 
 describe("appendCards", () => {
-  it("appends cards and keeps the existing cards and folders", () => {
-    const base: Deck = {
-      cards: [card("1", "Animals")],
-      folders: ["Animals", "Empty"],
-      tags: [],
-      folderTags: {},
-    };
-    const next = appendCards(base, [card("2", "Animals")]);
+  it("appends cards and keeps the existing cards, collections, and folders", () => {
+    const deck = mk([card("1", "Animals")], ["Animals", "Empty"], [
+      { name: "Nature", collections: ["Animals"] },
+    ]);
+    const next = appendCards(deck, [card("2", "Animals")]);
     expect(next.cards.map((c) => c.id)).toEqual(["1", "2"]);
-    expect(next.folders).toEqual(["Animals", "Empty"]);
+    expect(next.collections).toEqual(["Animals", "Empty"]);
+    expect(next.folders).toEqual([{ name: "Nature", collections: ["Animals"] }]);
   });
 
-  it("adds new folders the imported cards introduce, after the existing ones", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const next = appendCards(base, [card("2", "Objects")]);
-    expect(next.folders).toEqual(["Animals", "Objects"]);
+  it("adds new collections the imported cards introduce, after the existing ones", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const next = appendCards(deck, [card("2", "Objects")]);
+    expect(next.collections).toEqual(["Animals", "Objects"]);
   });
 
-  it("reuses an existing folder matched case-insensitively", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const next = appendCards(base, [card("2", "animals")]);
-    expect(next.folders).toEqual(["Animals"]);
+  it("reuses an existing collection matched case-insensitively", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const next = appendCards(deck, [card("2", "animals")]);
+    expect(next.collections).toEqual(["Animals"]);
   });
 
-  it("preserves existing tags and folder tags", () => {
-    const base: Deck = {
+  it("preserves existing tags and collection tags", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals"],
+      collections: ["Animals"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    const next = appendCards(base, [card("2", "Objects")]);
+    const next = appendCards(deck, [card("2", "Objects")]);
     expect(next.tags).toEqual([{ name: "JLPT", color: RED }]);
-    expect(next.folderTags).toEqual({ Animals: ["JLPT"] });
+    expect(next.collectionTags).toEqual({ Animals: ["JLPT"] });
   });
 });
 
-describe("folderCounts", () => {
-  it("counts cards per folder and includes empty folders as zero", () => {
-    const base = deck(
+describe("collectionCounts", () => {
+  it("counts cards per collection and includes empty collections as zero", () => {
+    const deck = mk(
       [card("1", "Animals"), card("2", "Animals")],
       ["Animals", "Phrases"],
+      [],
     );
-    const counts = folderCounts(base);
+    const counts = collectionCounts(deck);
     expect(counts.get("Animals")).toBe(2);
     expect(counts.get("Phrases")).toBe(0);
   });
 });
 
-describe("addFolder", () => {
-  it("appends a new empty folder", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const result = addFolder(base, "Phrases");
+describe("addCollection", () => {
+  it("appends a new empty collection", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const result = addCollection(deck, "Phrases");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck.folders).toEqual(["Animals", "Phrases"]);
-    expect(result.deck.cards).toBe(base.cards);
+    expect(result.deck.collections).toEqual(["Animals", "Phrases"]);
+    expect(result.deck.cards).toBe(deck.cards);
   });
 
   it("trims the name", () => {
-    const result = addFolder(deck([], []), "  Phrases  ");
+    const result = addCollection(mk([], [], []), "  Phrases  ");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck.folders).toEqual(["Phrases"]);
+    expect(result.deck.collections).toEqual(["Phrases"]);
   });
 
   it("rejects a blank name", () => {
-    expect(addFolder(deck([], []), "   ").ok).toBe(false);
+    expect(addCollection(mk([], [], []), "   ").ok).toBe(false);
   });
 
   it("rejects a duplicate name case-insensitively", () => {
-    const result = addFolder(deck([], ["Animals"]), "animals");
+    const result = addCollection(mk([], ["Animals"], []), "animals");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain("already exists");
   });
 });
 
-describe("renameFolder", () => {
-  it("renames the folder and relabels its cards", () => {
-    const base = deck(
+describe("renameCollection", () => {
+  it("renames the collection and relabels its cards", () => {
+    const deck = mk(
       [card("1", "Animals"), card("2", "Objects")],
       ["Animals", "Objects"],
+      [],
     );
-    const result = renameFolder(base, "Animals", "Creatures");
+    const result = renameCollection(deck, "Animals", "Creatures");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck.folders).toEqual(["Creatures", "Objects"]);
-    expect(result.deck.cards[0].folder).toBe("Creatures");
-    expect(result.deck.cards[1].folder).toBe("Objects");
+    expect(result.deck.collections).toEqual(["Creatures", "Objects"]);
+    expect(result.deck.cards[0].collection).toBe("Creatures");
+    expect(result.deck.cards[1].collection).toBe("Objects");
+  });
+
+  it("relabels the collection inside any folder it's filed under", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], [
+      { name: "Nature", collections: ["Animals"] },
+    ]);
+    const result = renameCollection(deck, "Animals", "Creatures");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual([
+      { name: "Nature", collections: ["Creatures"] },
+    ]);
   });
 
   it("allows a case-only rename", () => {
-    const base = deck([card("1", "animals")], ["animals"]);
-    const result = renameFolder(base, "animals", "Animals");
+    const deck = mk([card("1", "animals")], ["animals"], []);
+    const result = renameCollection(deck, "animals", "Animals");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck.folders).toEqual(["Animals"]);
-    expect(result.deck.cards[0].folder).toBe("Animals");
+    expect(result.deck.collections).toEqual(["Animals"]);
+    expect(result.deck.cards[0].collection).toBe("Animals");
   });
 
-  it("rejects renaming onto a different existing folder", () => {
-    const base = deck([], ["Animals", "Objects"]);
-    expect(renameFolder(base, "Animals", "objects").ok).toBe(false);
+  it("rejects renaming onto a different existing collection", () => {
+    const deck = mk([], ["Animals", "Objects"], []);
+    expect(renameCollection(deck, "Animals", "objects").ok).toBe(false);
   });
 
   it("rejects a blank new name", () => {
-    expect(renameFolder(deck([], ["Animals"]), "Animals", "  ").ok).toBe(false);
-  });
-
-  it("rejects renaming a folder that doesn't exist", () => {
-    expect(renameFolder(deck([], ["Animals"]), "Ghost", "Phantom").ok).toBe(
+    expect(renameCollection(mk([], ["Animals"], []), "Animals", "  ").ok).toBe(
       false,
     );
   });
 
-  it("carries the folder's tags over to the new name", () => {
-    const base: Deck = {
+  it("rejects renaming a collection that doesn't exist", () => {
+    expect(renameCollection(mk([], ["Animals"], []), "Ghost", "Phantom").ok).toBe(
+      false,
+    );
+  });
+
+  it("carries the collection's tags over to the new name", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals"],
+      collections: ["Animals"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    const result = renameFolder(base, "Animals", "Creatures");
+    const result = renameCollection(deck, "Animals", "Creatures");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck.folderTags).toEqual({ Creatures: ["JLPT"] });
+    expect(result.deck.collectionTags).toEqual({ Creatures: ["JLPT"] });
     expect(result.deck.tags).toEqual([{ name: "JLPT", color: RED }]);
   });
 });
 
-describe("duplicateFolder", () => {
-  it("copies the folder and its cards into a '<name> copy' folder", () => {
-    const base = deck(
-      [card("1", "Animals"), card("2", "Animals"), card("3", "Objects")],
-      ["Animals", "Objects"],
-    );
-    const result = duplicateFolder(base, "Animals");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.name).toBe("Animals copy");
-    // Inserted right after the source folder.
-    expect(result.deck.folders).toEqual(["Animals", "Animals copy", "Objects"]);
-    const copies = result.deck.cards.filter((c) => c.folder === "Animals copy");
-    expect(copies).toHaveLength(2);
-    expect(copies.map((c) => c.japanese)).toEqual(["j1", "j2"]);
-  });
-
-  it("gives the copies fresh ids and leaves the originals untouched", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const result = duplicateFolder(base, "Animals");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const copy = result.deck.cards.find((c) => c.folder === "Animals copy");
-    expect(copy).toBeDefined();
-    expect(copy?.id).not.toBe("1");
-    // Original card is unchanged.
-    expect(result.deck.cards[0]).toEqual(card("1", "Animals"));
-  });
-
-  it("deduplicates the copy name when one already exists", () => {
-    const base = deck([], ["Animals", "Animals copy"]);
-    const result = duplicateFolder(base, "Animals");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.name).toBe("Animals copy 2");
-  });
-
-  it("duplicates an empty folder with no cards", () => {
-    const base = deck([], ["Phrases"]);
-    const result = duplicateFolder(base, "Phrases");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.deck.folders).toEqual(["Phrases", "Phrases copy"]);
-    expect(result.deck.cards).toEqual([]);
-  });
-
-  it("rejects duplicating a folder that doesn't exist", () => {
-    expect(duplicateFolder(deck([], ["Animals"]), "Ghost").ok).toBe(false);
-  });
-
-  it("gives the copy its own set of the source folder's tags", () => {
-    const base: Deck = {
-      cards: [card("1", "Animals")],
-      folders: ["Animals"],
-      tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
-    };
-    const result = duplicateFolder(base, "Animals");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.deck.folderTags["Animals copy"]).toEqual(["JLPT"]);
-    // A fresh array, not the same reference as the source's.
-    expect(result.deck.folderTags["Animals copy"]).not.toBe(
-      base.folderTags.Animals,
-    );
-  });
-});
-
-describe("addCard", () => {
-  it("adds a card to an existing folder", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const result = addCard(base, "猫", "cat", "Animals");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.deck.cards).toHaveLength(2);
-    const added = result.deck.cards[1];
-    expect(added).toMatchObject({ japanese: "猫", english: "cat", folder: "Animals" });
-    expect(added.id).toBeTruthy();
-    expect(result.deck.folders).toEqual(["Animals"]);
-  });
-
-  it("trims the text and creates the target folder when it's new", () => {
-    const result = addCard(deck([], []), "  犬  ", "  dog  ", "Verbs");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.deck.cards[0]).toMatchObject({ japanese: "犬", english: "dog" });
-    expect(result.deck.folders).toEqual(["Verbs"]);
-  });
-
-  it("rejects a blank Japanese or English value", () => {
-    const base = deck([], ["Animals"]);
-    expect(addCard(base, "", "cat", "Animals").ok).toBe(false);
-    expect(addCard(base, "猫", "   ", "Animals").ok).toBe(false);
-  });
-});
-
-describe("removeCard", () => {
-  it("removes the card and keeps the folders", () => {
-    const base = deck(
-      [card("1", "Animals"), card("2", "Animals")],
-      ["Animals", "Objects"],
-    );
-    const next = removeCard(base, "1");
-    expect(next.cards.map((c) => c.id)).toEqual(["2"]);
-    expect(next.folders).toEqual(["Animals", "Objects"]);
-  });
-
-  it("is a no-op for an unknown card id", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const next = removeCard(base, "ghost");
-    expect(next.cards.map((c) => c.id)).toEqual(["1"]);
-  });
-});
-
-describe("removeFolder", () => {
-  it("moves cards to the default folder and drops the folder", () => {
-    const base = deck(
+describe("removeCollection", () => {
+  it("moves cards to the default collection and drops the collection", () => {
+    const deck = mk(
       [card("1", "Animals"), card("2", "Objects")],
       ["Animals", "Objects"],
+      [],
     );
-    const next = removeFolder(base, "Animals");
-    expect(next.folders).toEqual(["Objects", DEFAULT_FOLDER]);
-    expect(next.cards[0].folder).toBe(DEFAULT_FOLDER);
-    expect(next.cards[1].folder).toBe("Objects");
+    const next = removeCollection(deck, "Animals");
+    expect(next.collections).toEqual(["Objects", DEFAULT_COLLECTION]);
+    expect(next.cards[0].collection).toBe(DEFAULT_COLLECTION);
+    expect(next.cards[1].collection).toBe("Objects");
   });
 
-  it("keeps an existing default folder rather than duplicating it", () => {
-    const base = deck(
-      [card("1", "Animals"), card("2", DEFAULT_FOLDER)],
-      ["Animals", DEFAULT_FOLDER],
+  it("also removes the collection from any folder it was filed under", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], [
+      { name: "Nature", collections: ["Animals"] },
+    ]);
+    const next = removeCollection(deck, "Animals");
+    expect(next.folders).toEqual([{ name: "Nature", collections: [] }]);
+  });
+
+  it("keeps an existing default collection rather than duplicating it", () => {
+    const deck = mk(
+      [card("1", "Animals"), card("2", DEFAULT_COLLECTION)],
+      ["Animals", DEFAULT_COLLECTION],
+      [],
     );
-    const next = removeFolder(base, "Animals");
-    expect(next.folders).toEqual([DEFAULT_FOLDER]);
-    expect(next.cards[0].folder).toBe(DEFAULT_FOLDER);
+    const next = removeCollection(deck, "Animals");
+    expect(next.collections).toEqual([DEFAULT_COLLECTION]);
+    expect(next.cards[0].collection).toBe(DEFAULT_COLLECTION);
   });
 
-  it("removes an empty folder without touching cards", () => {
-    const base = deck([card("1", "Animals")], ["Animals", "Phrases"]);
-    const next = removeFolder(base, "Phrases");
-    expect(next.folders).toEqual(["Animals"]);
+  it("removes an empty collection without touching cards", () => {
+    const deck = mk([card("1", "Animals")], ["Animals", "Phrases"], []);
+    const next = removeCollection(deck, "Phrases");
+    expect(next.collections).toEqual(["Animals"]);
   });
 
-  it("won't delete the default folder while it holds cards", () => {
-    const base = deck([card("1", DEFAULT_FOLDER)], [DEFAULT_FOLDER]);
-    expect(removeFolder(base, DEFAULT_FOLDER)).toBe(base);
+  it("won't delete the default collection while it holds cards", () => {
+    const deck = mk([card("1", DEFAULT_COLLECTION)], [DEFAULT_COLLECTION], []);
+    expect(removeCollection(deck, DEFAULT_COLLECTION)).toBe(deck);
   });
 
-  it("drops the folder's tags and prunes any left unused", () => {
-    const base: Deck = {
+  it("drops the collection's tags and prunes any left unused", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals", "Objects"],
+      collections: ["Animals", "Objects"],
+      folders: [],
       tags: [
         { name: "JLPT", color: RED },
         { name: "Hard", color: BLUE },
       ],
-      folderTags: { Animals: ["JLPT"], Objects: ["Hard"] },
+      collectionTags: { Animals: ["JLPT"], Objects: ["Hard"] },
     };
-    const next = removeFolder(base, "Objects");
-    expect(next.folderTags).toEqual({ Animals: ["JLPT"] });
+    const next = removeCollection(deck, "Objects");
+    expect(next.collectionTags).toEqual({ Animals: ["JLPT"] });
     expect(next.tags).toEqual([{ name: "JLPT", color: RED }]);
   });
 });
 
 describe("moveCard", () => {
-  it("changes a card's folder", () => {
-    const base = deck(
+  it("changes a card's collection", () => {
+    const deck = mk(
       [card("1", "Animals"), card("2", "Animals")],
       ["Animals", "Objects"],
+      [],
     );
-    const next = moveCard(base, "1", "Objects");
-    expect(next.cards[0].folder).toBe("Objects");
-    expect(next.cards[1].folder).toBe("Animals");
-    expect(next.folders).toEqual(["Animals", "Objects"]);
+    const next = moveCard(deck, "1", "Objects");
+    expect(next.cards[0].collection).toBe("Objects");
+    expect(next.cards[1].collection).toBe("Animals");
+    expect(next.collections).toEqual(["Animals", "Objects"]);
   });
 
-  it("creates the target folder when it's new", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const next = moveCard(base, "1", "Verbs");
-    expect(next.folders).toEqual(["Animals", "Verbs"]);
-    expect(next.cards[0].folder).toBe("Verbs");
-  });
-
-  it("leaves tags untouched", () => {
-    const base: Deck = {
-      cards: [card("1", "Animals")],
-      folders: ["Animals", "Objects"],
-      tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
-    };
-    const next = moveCard(base, "1", "Objects");
-    expect(next.folderTags).toEqual({ Animals: ["JLPT"] });
+  it("creates the target collection when it's new", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const next = moveCard(deck, "1", "Verbs");
+    expect(next.collections).toEqual(["Animals", "Verbs"]);
+    expect(next.cards[0].collection).toBe("Verbs");
   });
 });
 
-describe("addFolderTag", () => {
-  it("creates a new tag with its color and pins it to the folder", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    const result = addFolderTag(base, "Animals", "JLPT", RED);
+describe("duplicateCollection", () => {
+  it("copies the collection and its cards into a '<name> copy' collection", () => {
+    const deck = mk(
+      [card("1", "Animals"), card("2", "Animals"), card("3", "Objects")],
+      ["Animals", "Objects"],
+      [],
+    );
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy");
+    expect(result.deck.collections).toEqual([
+      "Animals",
+      "Animals copy",
+      "Objects",
+    ]);
+    const copies = result.deck.cards.filter(
+      (c) => c.collection === "Animals copy",
+    );
+    expect(copies).toHaveLength(2);
+    expect(copies.map((c) => c.japanese)).toEqual(["j1", "j2"]);
+  });
+
+  it("gives the copies fresh ids and leaves the originals untouched", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = result.deck.cards.find((c) => c.collection === "Animals copy");
+    expect(copy).toBeDefined();
+    expect(copy?.id).not.toBe("1");
+    expect(result.deck.cards[0]).toEqual(card("1", "Animals"));
+  });
+
+  it("files the copy in the same folder as the source, right after it", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], [
+      { name: "Nature", collections: ["Animals"] },
+    ]);
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual([
+      { name: "Nature", collections: ["Animals", "Animals copy"] },
+    ]);
+  });
+
+  it("deduplicates the copy name when one already exists", () => {
+    const deck = mk([], ["Animals", "Animals copy"], []);
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy 2");
+  });
+
+  it("rejects duplicating a collection that doesn't exist", () => {
+    expect(duplicateCollection(mk([], ["Animals"], []), "Ghost").ok).toBe(false);
+  });
+
+  it("gives the copy its own set of the source collection's tags", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      collections: ["Animals"],
+      folders: [],
+      tags: [{ name: "JLPT", color: RED }],
+      collectionTags: { Animals: ["JLPT"] },
+    };
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.collectionTags["Animals copy"]).toEqual(["JLPT"]);
+    expect(result.deck.collectionTags["Animals copy"]).not.toBe(
+      deck.collectionTags.Animals,
+    );
+  });
+});
+
+describe("addCard", () => {
+  it("adds a card to an existing collection", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const result = addCard(deck, "猫", "cat", "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards).toHaveLength(2);
+    expect(result.deck.cards[1]).toMatchObject({
+      japanese: "猫",
+      english: "cat",
+      collection: "Animals",
+    });
+    expect(result.deck.collections).toEqual(["Animals"]);
+  });
+
+  it("trims the text and creates the target collection when it's new", () => {
+    const result = addCard(mk([], [], []), "  犬  ", "  dog  ", "Verbs");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards[0]).toMatchObject({ japanese: "犬", english: "dog" });
+    expect(result.deck.collections).toEqual(["Verbs"]);
+  });
+
+  it("rejects a blank Japanese or English value", () => {
+    const deck = mk([], ["Animals"], []);
+    expect(addCard(deck, "", "cat", "Animals").ok).toBe(false);
+    expect(addCard(deck, "猫", "   ", "Animals").ok).toBe(false);
+  });
+});
+
+describe("removeCard", () => {
+  it("removes the card and keeps the collections and folders", () => {
+    const deck = mk(
+      [card("1", "Animals"), card("2", "Animals")],
+      ["Animals", "Objects"],
+      [{ name: "Nature", collections: ["Animals"] }],
+    );
+    const next = removeCard(deck, "1");
+    expect(next.cards.map((c) => c.id)).toEqual(["2"]);
+    expect(next.collections).toEqual(["Animals", "Objects"]);
+    expect(next.folders).toEqual([{ name: "Nature", collections: ["Animals"] }]);
+  });
+
+  it("is a no-op for an unknown card id", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    expect(removeCard(deck, "ghost").cards.map((c) => c.id)).toEqual(["1"]);
+  });
+});
+
+describe("addFolder", () => {
+  it("appends a new empty folder", () => {
+    const result = addFolder(mk([], [], []), "Nature");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual([{ name: "Nature", collections: [] }]);
+  });
+
+  it("trims the name and rejects blanks and case-insensitive duplicates", () => {
+    const deck = mk([], [], [{ name: "Nature", collections: [] }]);
+    const trimmed = addFolder(mk([], [], []), "  Nature  ");
+    expect(trimmed.ok).toBe(true);
+    if (trimmed.ok) {
+      expect(trimmed.deck.folders[0].name).toBe("Nature");
+    }
+    expect(addFolder(deck, "  ").ok).toBe(false);
+    expect(addFolder(deck, "nature").ok).toBe(false);
+  });
+});
+
+describe("renameFolder", () => {
+  it("renames the folder, keeping its collections", () => {
+    const deck = mk([], ["Animals"], [{ name: "Nature", collections: ["Animals"] }]);
+    const result = renameFolder(deck, "Nature", "Wildlife");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual([
+      { name: "Wildlife", collections: ["Animals"] },
+    ]);
+  });
+
+  it("rejects renaming onto another folder, blanks, and missing folders", () => {
+    const deck = mk([], [], [
+      { name: "Nature", collections: [] },
+      { name: "Objects", collections: [] },
+    ]);
+    expect(renameFolder(deck, "Nature", "objects").ok).toBe(false);
+    expect(renameFolder(deck, "Nature", "  ").ok).toBe(false);
+    expect(renameFolder(deck, "Ghost", "Phantom").ok).toBe(false);
+  });
+});
+
+describe("removeFolder", () => {
+  it("drops the folder and leaves its collections ungrouped, cards untouched", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], [
+      { name: "Nature", collections: ["Animals"] },
+    ]);
+    const next = removeFolder(deck, "Nature");
+    expect(next.folders).toEqual([]);
+    expect(next.collections).toEqual(["Animals"]);
+    expect(next.cards).toEqual(deck.cards);
+  });
+});
+
+describe("moveCollection", () => {
+  const base = mk(
+    [card("1", "Animals"), card("2", "Plants")],
+    ["Animals", "Plants"],
+    [
+      { name: "Nature", collections: ["Animals"] },
+      { name: "Misc", collections: [] },
+    ],
+  );
+
+  it("files an ungrouped collection under a folder", () => {
+    const next = moveCollection(base, "Plants", "Nature");
+    expect(next.folders).toEqual([
+      { name: "Nature", collections: ["Animals", "Plants"] },
+      { name: "Misc", collections: [] },
+    ]);
+  });
+
+  it("moves a collection from one folder to another (only one folder at a time)", () => {
+    const next = moveCollection(base, "Animals", "Misc");
+    expect(next.folders).toEqual([
+      { name: "Nature", collections: [] },
+      { name: "Misc", collections: ["Animals"] },
+    ]);
+  });
+
+  it("ungroups a collection when the target folder is null", () => {
+    const next = moveCollection(base, "Animals", null);
+    expect(next.folders).toEqual([
+      { name: "Nature", collections: [] },
+      { name: "Misc", collections: [] },
+    ]);
+  });
+
+  it("leaves the collection ungrouped when the target folder doesn't exist", () => {
+    const next = moveCollection(base, "Animals", "Ghost");
+    expect(next.folders).toEqual([
+      { name: "Nature", collections: [] },
+      { name: "Misc", collections: [] },
+    ]);
+  });
+});
+
+describe("ungroupedCollections / folderOfCollection", () => {
+  const deck = mk([], ["Animals", "Plants", "Phrases"], [
+    { name: "Nature", collections: ["Animals", "Plants"] },
+  ]);
+
+  it("lists collections not filed in any folder, in collections order", () => {
+    expect(ungroupedCollections(deck)).toEqual(["Phrases"]);
+  });
+
+  it("reports the folder a collection is filed under, or null", () => {
+    expect(folderOfCollection(deck, "Animals")).toBe("Nature");
+    expect(folderOfCollection(deck, "Phrases")).toBeNull();
+  });
+});
+
+describe("addCollectionTag", () => {
+  it("creates a new tag with its color and pins it to the collection", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    const result = addCollectionTag(deck, "Animals", "JLPT", RED);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.deck.tags).toEqual([{ name: "JLPT", color: RED }]);
-    expect(result.deck.folderTags).toEqual({ Animals: ["JLPT"] });
+    expect(result.deck.collectionTags).toEqual({ Animals: ["JLPT"] });
   });
 
   it("reuses an existing tag's spelling and color, ignoring the passed color", () => {
-    const base: Deck = {
+    const deck: Deck = {
       cards: [card("1", "Animals"), card("2", "Objects")],
-      folders: ["Animals", "Objects"],
+      collections: ["Animals", "Objects"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    const result = addFolderTag(base, "Objects", "jlpt", BLUE);
+    const result = addCollectionTag(deck, "Objects", "jlpt", BLUE);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.deck.tags).toEqual([{ name: "JLPT", color: RED }]);
-    expect(result.deck.folderTags.Objects).toEqual(["JLPT"]);
+    expect(result.deck.collectionTags.Objects).toEqual(["JLPT"]);
   });
 
-  it("is a no-op when the folder already has the tag", () => {
-    const base: Deck = {
+  it("is a no-op when the collection already has the tag", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals"],
+      collections: ["Animals"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    const result = addFolderTag(base, "Animals", "JLPT", BLUE);
+    const result = addCollectionTag(deck, "Animals", "JLPT", BLUE);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.deck).toBe(base);
+    expect(result.deck).toBe(deck);
   });
 
   it("rejects a blank tag name", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    expect(addFolderTag(base, "Animals", "  ", RED).ok).toBe(false);
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    expect(addCollectionTag(deck, "Animals", "  ", RED).ok).toBe(false);
   });
 
-  it("rejects an unknown folder", () => {
-    const base = deck([card("1", "Animals")], ["Animals"]);
-    expect(addFolderTag(base, "Ghost", "JLPT", RED).ok).toBe(false);
+  it("rejects an unknown collection", () => {
+    const deck = mk([card("1", "Animals")], ["Animals"], []);
+    expect(addCollectionTag(deck, "Ghost", "JLPT", RED).ok).toBe(false);
   });
 });
 
-describe("removeFolderTag", () => {
-  it("unpins a tag and prunes it when no folder keeps it", () => {
-    const base: Deck = {
+describe("removeCollectionTag", () => {
+  it("unpins a tag and prunes it when no collection keeps it", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals"],
+      collections: ["Animals"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    const next = removeFolderTag(base, "Animals", "JLPT");
-    expect(next.folderTags).toEqual({});
+    const next = removeCollectionTag(deck, "Animals", "JLPT");
+    expect(next.collectionTags).toEqual({});
     expect(next.tags).toEqual([]);
   });
 
-  it("keeps a tag still pinned to another folder", () => {
-    const base: Deck = {
+  it("keeps a tag still pinned to another collection", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals"), card("2", "Objects")],
-      folders: ["Animals", "Objects"],
+      collections: ["Animals", "Objects"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"], Objects: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"], Objects: ["JLPT"] },
     };
-    const next = removeFolderTag(base, "Animals", "JLPT");
-    expect(next.folderTags).toEqual({ Objects: ["JLPT"] });
+    const next = removeCollectionTag(deck, "Animals", "JLPT");
+    expect(next.collectionTags).toEqual({ Objects: ["JLPT"] });
     expect(next.tags).toEqual([{ name: "JLPT", color: RED }]);
   });
 
-  it("is a no-op for an unknown folder or tag", () => {
-    const base: Deck = {
+  it("is a no-op for an unknown collection or tag", () => {
+    const deck: Deck = {
       cards: [card("1", "Animals")],
-      folders: ["Animals"],
+      collections: ["Animals"],
+      folders: [],
       tags: [{ name: "JLPT", color: RED }],
-      folderTags: { Animals: ["JLPT"] },
+      collectionTags: { Animals: ["JLPT"] },
     };
-    expect(removeFolderTag(base, "Ghost", "JLPT")).toBe(base);
-    expect(removeFolderTag(base, "Animals", "Nope")).toBe(base);
+    expect(removeCollectionTag(deck, "Ghost", "JLPT")).toBe(deck);
+    expect(removeCollectionTag(deck, "Animals", "Nope")).toBe(deck);
   });
 });
 
 describe("tag lookups", () => {
-  const base: Deck = {
+  const deck: Deck = {
     cards: [card("1", "Animals"), card("2", "Objects")],
-    folders: ["Animals", "Objects", "Phrases"],
+    collections: ["Animals", "Objects", "Phrases"],
+    folders: [],
     tags: [
       { name: "JLPT", color: RED },
       { name: "Hard", color: BLUE },
     ],
-    folderTags: { Animals: ["JLPT", "Hard"], Objects: ["JLPT"] },
+    collectionTags: { Animals: ["JLPT", "Hard"], Objects: ["JLPT"] },
   };
 
   it("tagColor looks up case-insensitively", () => {
-    expect(tagColor(base, "jlpt")).toBe(RED);
-    expect(tagColor(base, "missing")).toBeUndefined();
+    expect(tagColor(deck, "jlpt")).toBe(RED);
+    expect(tagColor(deck, "missing")).toBeUndefined();
   });
 
-  it("tagsForFolder returns a folder's tags in order", () => {
-    expect(tagsForFolder(base, "Animals")).toEqual(["JLPT", "Hard"]);
-    expect(tagsForFolder(base, "Phrases")).toEqual([]);
+  it("tagsForCollection returns a collection's tags in order", () => {
+    expect(tagsForCollection(deck, "Animals")).toEqual(["JLPT", "Hard"]);
+    expect(tagsForCollection(deck, "Phrases")).toEqual([]);
   });
 
-  it("foldersForTag returns matching folders in folder order", () => {
-    expect(foldersForTag(base, "JLPT")).toEqual(["Animals", "Objects"]);
-    expect(foldersForTag(base, "Hard")).toEqual(["Animals"]);
+  it("collectionsForTag returns matching collections in collection order", () => {
+    expect(collectionsForTag(deck, "JLPT")).toEqual(["Animals", "Objects"]);
+    expect(collectionsForTag(deck, "Hard")).toEqual(["Animals"]);
   });
 });
