@@ -9,16 +9,20 @@ import {
   useState,
 } from "react";
 import {
+  addCard as addCardTo,
   addFolder as addFolderTo,
   addFolderTag as addFolderTagTo,
   appendCards as appendCardsTo,
   deckFromCards,
+  duplicateFolder as duplicateFolderIn,
   moveCard as moveCardIn,
+  removeCard as removeCardFrom,
   removeFolder as removeFolderFrom,
   removeFolderTag as removeFolderTagFrom,
   renameFolder as renameFolderIn,
   type Deck,
   type DeckResult,
+  type DuplicateResult,
   type Tag,
 } from "./deck";
 import {
@@ -60,10 +64,16 @@ type FlashcardsStore = {
   addFolder: (name: string) => DeckResult;
   /** Rename a folder, relabeling every card in it. Returns a validation error on conflict. */
   renameFolder: (oldName: string, newName: string) => DeckResult;
+  /** Copy a folder and its cards into a new "<folder> copy"; returns the copy's name. */
+  duplicateFolder: (name: string) => DuplicateResult;
   /** Delete a folder; its cards fall back to the default folder. */
   removeFolder: (name: string) => void;
+  /** Add a new card to a folder. Returns a validation error if text is blank. */
+  addCard: (japanese: string, english: string, folder: string) => DeckResult;
   /** Move a single card into a folder (creating that folder if it's new). */
   moveCard: (cardId: string, folder: string) => void;
+  /** Delete a single card from the deck. */
+  removeCard: (cardId: string) => void;
   /** Pin a tag to a folder, creating it with the given color if it's new. */
   addFolderTag: (folder: string, name: string, color: string) => DeckResult;
   /** Unpin a tag from a folder; a tag left on no folders disappears. */
@@ -145,12 +155,34 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     [deck],
   );
 
+  const duplicateFolder = useCallback(
+    (name: string): DuplicateResult => {
+      const result = duplicateFolderIn(deck, name);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
   const removeFolder = useCallback((name: string) => {
     setDeck((current) => removeFolderFrom(current, name));
   }, []);
 
+  const addCard = useCallback(
+    (japanese: string, english: string, folder: string): DeckResult => {
+      const result = addCardTo(deck, japanese, english, folder);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
   const moveCard = useCallback((cardId: string, folder: string) => {
     setDeck((current) => moveCardIn(current, cardId, folder));
+  }, []);
+
+  const removeCard = useCallback((cardId: string) => {
+    setDeck((current) => removeCardFrom(current, cardId));
   }, []);
 
   // Validates against the current deck and reports back synchronously, like
@@ -182,8 +214,11 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       clear,
       addFolder,
       renameFolder,
+      duplicateFolder,
       removeFolder,
+      addCard,
       moveCard,
+      removeCard,
       addFolderTag,
       removeFolderTag,
     }),
@@ -196,8 +231,11 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       clear,
       addFolder,
       renameFolder,
+      duplicateFolder,
       removeFolder,
+      addCard,
       moveCard,
+      removeCard,
       addFolderTag,
       removeFolderTag,
     ],

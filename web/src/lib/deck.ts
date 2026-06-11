@@ -1,4 +1,9 @@
-import { DEFAULT_FOLDER, folderNames, type Flashcard } from "./flashcards";
+import {
+  createCard,
+  DEFAULT_FOLDER,
+  folderNames,
+  type Flashcard,
+} from "./flashcards";
 
 /** A tag the user can pin to folders, with a color from the tag palette. */
 export type Tag = {
@@ -31,6 +36,14 @@ export type Deck = {
 /** Result of a folder operation that can fail validation. */
 export type DeckResult =
   | { ok: true; deck: Deck }
+  | { ok: false; error: string };
+
+/**
+ * Result of duplicating a folder. Carries the generated name of the copy so the
+ * caller can focus it, since the name is derived rather than user-supplied.
+ */
+export type DuplicateResult =
+  | { ok: true; deck: Deck; name: string }
   | { ok: false; error: string };
 
 /** Case-insensitive, whitespace-insensitive key for comparing folder names. */
@@ -152,6 +165,96 @@ export function renameFolder(
       tags: deck.tags,
       folderTags,
     },
+  };
+}
+
+/**
+ * Pick a free name for a copy of `base`, e.g. `Animals copy`, then
+ * `Animals copy 2`, `Animals copy 3`, ... skipping any that already exist
+ * (compared case-insensitively).
+ */
+function uniqueCopyName(folders: string[], base: string): string {
+  const taken = new Set(folders.map(key));
+  const first = `${base} copy`;
+  if (!taken.has(key(first))) return first;
+  let n = 2;
+  while (taken.has(key(`${base} copy ${n}`))) n++;
+  return `${base} copy ${n}`;
+}
+
+/**
+ * Duplicate a folder and every card in it into a new folder named
+ * `"<folder> copy"` (deduplicated if that name is taken). The copies are fresh
+ * cards with new ids, so editing or moving them never touches the originals. The
+ * new folder is inserted right after the source folder and inherits its tags.
+ */
+export function duplicateFolder(deck: Deck, name: string): DuplicateResult {
+  if (!deck.folders.includes(name)) {
+    return { ok: false, error: `There's no folder named "${name}".` };
+  }
+  const newName = uniqueCopyName(deck.folders, name);
+  const copies = deck.cards
+    .filter((card) => card.folder === name)
+    .map((card) => createCard(card.japanese, card.english, newName));
+
+  const folders = [...deck.folders];
+  folders.splice(folders.indexOf(name) + 1, 0, newName);
+
+  // The copy starts with the same tags as its source.
+  const folderTags = { ...deck.folderTags };
+  if (deck.folderTags[name]) folderTags[newName] = [...deck.folderTags[name]];
+
+  return {
+    ok: true,
+    deck: { cards: [...deck.cards, ...copies], folders, tags: deck.tags, folderTags },
+    name: newName,
+  };
+}
+
+/**
+ * Add a new card to a folder. Both the Japanese and English text are required;
+ * a blank value is rejected. The target folder is created if it doesn't exist
+ * yet, mirroring {@link moveCard}.
+ */
+export function addCard(
+  deck: Deck,
+  japanese: string,
+  english: string,
+  folder: string,
+): DeckResult {
+  const j = japanese.trim();
+  const e = english.trim();
+  const missing: string[] = [];
+  if (!j) missing.push("Japanese");
+  if (!e) missing.push("English");
+  if (missing.length > 0) {
+    return { ok: false, error: `Add the ${missing.join(" and ")} text first.` };
+  }
+
+  const target = folder.trim() || DEFAULT_FOLDER;
+  const folders = deck.folders.some((f) => key(f) === key(target))
+    ? deck.folders
+    : [...deck.folders, target];
+  return {
+    ok: true,
+    deck: {
+      cards: [...deck.cards, createCard(j, e, target)],
+      folders,
+      tags: deck.tags,
+      folderTags: deck.folderTags,
+    },
+  };
+}
+
+/**
+ * Remove a single card from the deck. Folders are left untouched, so a folder
+ * that empties out stays in the list (consistent with how the app keeps empty
+ * folders around) until it's deleted explicitly.
+ */
+export function removeCard(deck: Deck, cardId: string): Deck {
+  return {
+    ...deck,
+    cards: deck.cards.filter((card) => card.id !== cardId),
   };
 }
 

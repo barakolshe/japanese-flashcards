@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  createCard,
   DEFAULT_FOLDER,
   folderNames,
   parseFlashcardsCsv,
   serializeFlashcardsCsv,
 } from "./flashcards";
+
+describe("createCard", () => {
+  it("builds a card from the given fields with a fresh unique id", () => {
+    const a = createCard("猫", "cat", "Animals");
+    const b = createCard("猫", "cat", "Animals");
+    expect(a).toMatchObject({ japanese: "猫", english: "cat", folder: "Animals" });
+    expect(a.id).toBeTruthy();
+    expect(a.id).not.toBe(b.id);
+  });
+});
 
 describe("parseFlashcardsCsv", () => {
   it("parses well-formed rows into cards", () => {

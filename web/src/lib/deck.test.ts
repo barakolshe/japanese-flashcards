@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_FOLDER, type Flashcard } from "./flashcards";
 import {
+  addCard,
   addFolder,
   addFolderTag,
   appendCards,
   deckFromCards,
+  duplicateFolder,
   folderCounts,
   foldersForTag,
   moveCard,
+  removeCard,
   removeFolder,
   removeFolderTag,
   renameFolder,
@@ -170,6 +173,120 @@ describe("renameFolder", () => {
     if (!result.ok) return;
     expect(result.deck.folderTags).toEqual({ Creatures: ["JLPT"] });
     expect(result.deck.tags).toEqual([{ name: "JLPT", color: RED }]);
+  });
+});
+
+describe("duplicateFolder", () => {
+  it("copies the folder and its cards into a '<name> copy' folder", () => {
+    const base = deck(
+      [card("1", "Animals"), card("2", "Animals"), card("3", "Objects")],
+      ["Animals", "Objects"],
+    );
+    const result = duplicateFolder(base, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy");
+    // Inserted right after the source folder.
+    expect(result.deck.folders).toEqual(["Animals", "Animals copy", "Objects"]);
+    const copies = result.deck.cards.filter((c) => c.folder === "Animals copy");
+    expect(copies).toHaveLength(2);
+    expect(copies.map((c) => c.japanese)).toEqual(["j1", "j2"]);
+  });
+
+  it("gives the copies fresh ids and leaves the originals untouched", () => {
+    const base = deck([card("1", "Animals")], ["Animals"]);
+    const result = duplicateFolder(base, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = result.deck.cards.find((c) => c.folder === "Animals copy");
+    expect(copy).toBeDefined();
+    expect(copy?.id).not.toBe("1");
+    // Original card is unchanged.
+    expect(result.deck.cards[0]).toEqual(card("1", "Animals"));
+  });
+
+  it("deduplicates the copy name when one already exists", () => {
+    const base = deck([], ["Animals", "Animals copy"]);
+    const result = duplicateFolder(base, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy 2");
+  });
+
+  it("duplicates an empty folder with no cards", () => {
+    const base = deck([], ["Phrases"]);
+    const result = duplicateFolder(base, "Phrases");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual(["Phrases", "Phrases copy"]);
+    expect(result.deck.cards).toEqual([]);
+  });
+
+  it("rejects duplicating a folder that doesn't exist", () => {
+    expect(duplicateFolder(deck([], ["Animals"]), "Ghost").ok).toBe(false);
+  });
+
+  it("gives the copy its own set of the source folder's tags", () => {
+    const base: Deck = {
+      cards: [card("1", "Animals")],
+      folders: ["Animals"],
+      tags: [{ name: "JLPT", color: RED }],
+      folderTags: { Animals: ["JLPT"] },
+    };
+    const result = duplicateFolder(base, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folderTags["Animals copy"]).toEqual(["JLPT"]);
+    // A fresh array, not the same reference as the source's.
+    expect(result.deck.folderTags["Animals copy"]).not.toBe(
+      base.folderTags.Animals,
+    );
+  });
+});
+
+describe("addCard", () => {
+  it("adds a card to an existing folder", () => {
+    const base = deck([card("1", "Animals")], ["Animals"]);
+    const result = addCard(base, "猫", "cat", "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards).toHaveLength(2);
+    const added = result.deck.cards[1];
+    expect(added).toMatchObject({ japanese: "猫", english: "cat", folder: "Animals" });
+    expect(added.id).toBeTruthy();
+    expect(result.deck.folders).toEqual(["Animals"]);
+  });
+
+  it("trims the text and creates the target folder when it's new", () => {
+    const result = addCard(deck([], []), "  犬  ", "  dog  ", "Verbs");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards[0]).toMatchObject({ japanese: "犬", english: "dog" });
+    expect(result.deck.folders).toEqual(["Verbs"]);
+  });
+
+  it("rejects a blank Japanese or English value", () => {
+    const base = deck([], ["Animals"]);
+    expect(addCard(base, "", "cat", "Animals").ok).toBe(false);
+    expect(addCard(base, "猫", "   ", "Animals").ok).toBe(false);
+  });
+});
+
+describe("removeCard", () => {
+  it("removes the card and keeps the folders", () => {
+    const base = deck(
+      [card("1", "Animals"), card("2", "Animals")],
+      ["Animals", "Objects"],
+    );
+    const next = removeCard(base, "1");
+    expect(next.cards.map((c) => c.id)).toEqual(["2"]);
+    expect(next.folders).toEqual(["Animals", "Objects"]);
+  });
+
+  it("is a no-op for an unknown card id", () => {
+    const base = deck([card("1", "Animals")], ["Animals"]);
+    const next = removeCard(base, "ghost");
+    expect(next.cards.map((c) => c.id)).toEqual(["1"]);
   });
 });
 
