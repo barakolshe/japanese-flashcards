@@ -8,16 +8,16 @@ export type Flashcard = {
   japanese: string;
   /** The English meaning (back of the card). Required. */
   english: string;
-  /** The folder/category the card belongs to. Defaults to DEFAULT_FOLDER. */
-  folder: string;
+  /** The collection the card belongs to. Defaults to DEFAULT_COLLECTION. */
+  collection: string;
 };
 
-/** Folder assigned to a card when the CSV leaves the folder column blank. */
-export const DEFAULT_FOLDER = "Uncategorized";
+/** Collection assigned to a card when the CSV leaves the collection column blank. */
+export const DEFAULT_COLLECTION = "Uncategorized";
 
 /** Column headers the uploader recognizes (matched case-insensitively). */
 export const REQUIRED_COLUMNS = ["japanese", "english"] as const;
-export const OPTIONAL_COLUMNS = ["folder"] as const;
+export const OPTIONAL_COLUMNS = ["collection"] as const;
 
 /** A row that could not be turned into a card, with a human-readable reason. */
 export type SkippedRow = {
@@ -39,8 +39,8 @@ function newId(): string {
 type ColumnLayout = {
   japanese: number;
   english: number;
-  /** -1 when there is no folder column. */
-  folder: number;
+  /** -1 when there is no collection column. */
+  collection: number;
   /** Rows that hold card data (the header row is excluded when present). */
   dataRows: string[][];
   /** 1-based source line of the first data row (2 with a header, 1 without). */
@@ -51,7 +51,7 @@ type ColumnLayout = {
  * Decide how to read the parsed rows. A first row that names both `japanese`
  * and `english` (case-insensitively, in any order) is treated as a header and
  * the columns are located by name. Otherwise the file is taken to have no
- * header and columns are read positionally as japanese, english, folder.
+ * header and columns are read positionally as japanese, english, collection.
  */
 function resolveLayout(rows: string[][]): ColumnLayout {
   const header = rows[0].map((cell) => cell.trim().toLowerCase());
@@ -61,7 +61,7 @@ function resolveLayout(rows: string[][]): ColumnLayout {
     return {
       japanese: header.indexOf("japanese"),
       english: header.indexOf("english"),
-      folder: header.indexOf("folder"),
+      collection: header.indexOf("collection"),
       dataRows: rows.slice(1),
       firstDataLine: 2,
     };
@@ -70,7 +70,7 @@ function resolveLayout(rows: string[][]): ColumnLayout {
   return {
     japanese: 0,
     english: 1,
-    folder: 2,
+    collection: 2,
     dataRows: rows,
     firstDataLine: 1,
   };
@@ -80,11 +80,11 @@ function resolveLayout(rows: string[][]): ColumnLayout {
  * Parse the text of a CSV file into flashcards.
  *
  * The file may start with a header row naming the columns `japanese`,
- * `english`, and (optionally) `folder` — matched case-insensitively and in any
- * order — or it may have no header at all, in which case columns are read
- * positionally as japanese, english, folder. Rows missing a Japanese or
- * English value are skipped and reported; a blank/absent folder falls back to
- * {@link DEFAULT_FOLDER}.
+ * `english`, and (optionally) `collection` — matched case-insensitively and in
+ * any order — or it may have no header at all, in which case columns are read
+ * positionally as japanese, english, collection. Rows missing a Japanese or
+ * English value are skipped and reported; a blank/absent collection falls back
+ * to {@link DEFAULT_COLLECTION}.
  */
 export function parseFlashcardsCsv(text: string): ParseResult {
   const parsed = Papa.parse<string[]>(text, {
@@ -106,9 +106,9 @@ export function parseFlashcardsCsv(text: string): ParseResult {
     const line = layout.firstDataLine + index;
     const japanese = (row[layout.japanese] ?? "").trim();
     const english = (row[layout.english] ?? "").trim();
-    const folder =
-      (layout.folder >= 0 ? row[layout.folder] ?? "" : "").trim() ||
-      DEFAULT_FOLDER;
+    const collection =
+      (layout.collection >= 0 ? row[layout.collection] ?? "" : "").trim() ||
+      DEFAULT_COLLECTION;
 
     const missingFields: string[] = [];
     if (!japanese) missingFields.push("Japanese");
@@ -122,7 +122,7 @@ export function parseFlashcardsCsv(text: string): ParseResult {
       return;
     }
 
-    cards.push({ id: newId(), japanese, english, folder });
+    cards.push({ id: newId(), japanese, english, collection });
   });
 
   if (cards.length === 0) {
@@ -140,8 +140,8 @@ export function parseFlashcardsCsv(text: string): ParseResult {
 
 /**
  * Serialize flashcards back into CSV text that {@link parseFlashcardsCsv} can
- * read again. Emits a `japanese,english,folder` header followed by one row per
- * card, so a deck round-trips through export and re-upload unchanged. Papa
+ * read again. Emits a `japanese,english,collection` header followed by one row
+ * per card, so a deck round-trips through export and re-upload unchanged. Papa
  * handles quoting of values containing commas, quotes, or newlines.
  */
 export function serializeFlashcardsCsv(cards: Flashcard[]): string {
@@ -152,17 +152,17 @@ export function serializeFlashcardsCsv(cards: Flashcard[]): string {
   return Papa.unparse(
     {
       fields,
-      data: cards.map((card) => [card.japanese, card.english, card.folder]),
+      data: cards.map((card) => [card.japanese, card.english, card.collection]),
     },
     { newline: "\n" },
   );
 }
 
-/** Distinct folder names present in a set of cards, in first-seen order. */
-export function folderNames(cards: Flashcard[]): string[] {
+/** Distinct collection names present in a set of cards, in first-seen order. */
+export function collectionNames(cards: Flashcard[]): string[] {
   const seen = new Set<string>();
   for (const card of cards) {
-    if (!seen.has(card.folder)) seen.add(card.folder);
+    if (!seen.has(card.collection)) seen.add(card.collection);
   }
   return [...seen];
 }

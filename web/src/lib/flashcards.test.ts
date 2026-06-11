@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_FOLDER,
-  folderNames,
+  DEFAULT_COLLECTION,
+  collectionNames,
   parseFlashcardsCsv,
   serializeFlashcardsCsv,
 } from "./flashcards";
@@ -9,7 +9,7 @@ import {
 describe("parseFlashcardsCsv", () => {
   it("parses well-formed rows into cards", () => {
     const csv = [
-      "japanese,english,folder",
+      "japanese,english,collection",
       "猫,cat,Animals",
       "犬,dog,Animals",
       "ありがとう,thank you,Phrases",
@@ -24,13 +24,13 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
-      folder: "Animals",
+      collection: "Animals",
     });
     expect(result.cards[0].id).toBeTruthy();
   });
 
   it("matches headers case-insensitively and order-independently", () => {
-    const csv = ["English, Folder , JAPANESE", "cat,Animals,猫"].join("\n");
+    const csv = ["English, Collection , JAPANESE", "cat,Animals,猫"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
@@ -39,13 +39,13 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
-      folder: "Animals",
+      collection: "Animals",
     });
   });
 
-  it("defaults a blank or missing folder to the default folder", () => {
+  it("defaults a blank or missing collection to the default collection", () => {
     const csv = [
-      "japanese,english,folder",
+      "japanese,english,collection",
       "猫,cat,",
       "犬,dog,Animals",
     ].join("\n");
@@ -54,24 +54,37 @@ describe("parseFlashcardsCsv", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.cards[0].folder).toBe(DEFAULT_FOLDER);
-    expect(result.cards[1].folder).toBe("Animals");
+    expect(result.cards[0].collection).toBe(DEFAULT_COLLECTION);
+    expect(result.cards[1].collection).toBe("Animals");
   });
 
-  it("works without a folder column at all", () => {
+  it("works without a collection column at all", () => {
     const csv = ["japanese,english", "猫,cat"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.cards[0].folder).toBe(DEFAULT_FOLDER);
+    expect(result.cards[0].collection).toBe(DEFAULT_COLLECTION);
+  });
+
+  it("ignores a legacy folder header rather than treating it as the collection", () => {
+    const csv = ["japanese,english,folder", "猫,cat,Animals"].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // "folder" isn't a recognized column, so the third value is dropped and the
+    // card lands in the default collection.
+    expect(result.cards[0].collection).toBe(DEFAULT_COLLECTION);
   });
 
   it("trims surrounding whitespace from values", () => {
-    const csv = ["japanese,english,folder", "  猫  ,  cat  ,  Animals  "].join(
-      "\n",
-    );
+    const csv = [
+      "japanese,english,collection",
+      "  猫  ,  cat  ,  Animals  ",
+    ].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
@@ -80,13 +93,13 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
-      folder: "Animals",
+      collection: "Animals",
     });
   });
 
   it("handles quoted fields containing commas", () => {
     const csv = [
-      "japanese,english,folder",
+      "japanese,english,collection",
       '行ってきます,"I\'m off, see you",Phrases',
     ].join("\n");
 
@@ -99,7 +112,7 @@ describe("parseFlashcardsCsv", () => {
 
   it("skips rows missing Japanese or English and reports them", () => {
     const csv = [
-      "japanese,english,folder",
+      "japanese,english,collection",
       "猫,cat,Animals",
       ",orphan,Animals",
       "犬,,Animals",
@@ -127,11 +140,11 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
-      folder: "Animals",
+      collection: "Animals",
     });
   });
 
-  it("reads a headerless file without a folder column", () => {
+  it("reads a headerless file without a collection column", () => {
     const csv = ["猫,cat", "犬,dog"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
@@ -139,7 +152,7 @@ describe("parseFlashcardsCsv", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.cards).toHaveLength(2);
-    expect(result.cards[0].folder).toBe(DEFAULT_FOLDER);
+    expect(result.cards[0].collection).toBe(DEFAULT_COLLECTION);
   });
 
   it("numbers lines from 1 when there is no header row", () => {
@@ -154,7 +167,7 @@ describe("parseFlashcardsCsv", () => {
   });
 
   it("treats a header naming only one column as data, not a header", () => {
-    const csv = ["japanese,folder", "猫,Animals"].join("\n");
+    const csv = ["japanese,collection", "猫,Animals"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
@@ -163,12 +176,12 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards).toHaveLength(2);
     expect(result.cards[0]).toMatchObject({
       japanese: "japanese",
-      english: "folder",
+      english: "collection",
     });
   });
 
   it("fails on a header-only file", () => {
-    const result = parseFlashcardsCsv("japanese,english,folder\n");
+    const result = parseFlashcardsCsv("japanese,english,collection\n");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -195,18 +208,25 @@ describe("parseFlashcardsCsv", () => {
 describe("serializeFlashcardsCsv", () => {
   it("writes a header and one row per card", () => {
     const csv = serializeFlashcardsCsv([
-      { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
-      { id: "2", japanese: "犬", english: "dog", folder: "Animals" },
+      { id: "1", japanese: "猫", english: "cat", collection: "Animals" },
+      { id: "2", japanese: "犬", english: "dog", collection: "Animals" },
     ]);
 
     expect(csv).toBe(
-      ["japanese,english,folder", "猫,cat,Animals", "犬,dog,Animals"].join("\n"),
+      ["japanese,english,collection", "猫,cat,Animals", "犬,dog,Animals"].join(
+        "\n",
+      ),
     );
   });
 
   it("quotes values containing commas", () => {
     const csv = serializeFlashcardsCsv([
-      { id: "1", japanese: "行ってきます", english: "I'm off, see you", folder: "Phrases" },
+      {
+        id: "1",
+        japanese: "行ってきます",
+        english: "I'm off, see you",
+        collection: "Phrases",
+      },
     ]);
 
     expect(csv).toContain('"I\'m off, see you"');
@@ -214,9 +234,14 @@ describe("serializeFlashcardsCsv", () => {
 
   it("round-trips through the parser unchanged", () => {
     const cards = [
-      { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
-      { id: "2", japanese: "行ってきます", english: "I'm off, see you", folder: "Phrases" },
-      { id: "3", japanese: "本", english: "book", folder: DEFAULT_FOLDER },
+      { id: "1", japanese: "猫", english: "cat", collection: "Animals" },
+      {
+        id: "2",
+        japanese: "行ってきます",
+        english: "I'm off, see you",
+        collection: "Phrases",
+      },
+      { id: "3", japanese: "本", english: "book", collection: DEFAULT_COLLECTION },
     ];
 
     const result = parseFlashcardsCsv(serializeFlashcardsCsv(cards));
@@ -225,33 +250,33 @@ describe("serializeFlashcardsCsv", () => {
     if (!result.ok) return;
     expect(result.skipped).toEqual([]);
     expect(
-      result.cards.map(({ japanese, english, folder }) => ({
+      result.cards.map(({ japanese, english, collection }) => ({
         japanese,
         english,
-        folder,
+        collection,
       })),
     ).toEqual(
-      cards.map(({ japanese, english, folder }) => ({
+      cards.map(({ japanese, english, collection }) => ({
         japanese,
         english,
-        folder,
+        collection,
       })),
     );
   });
 
   it("produces an empty deck as a header-only file", () => {
-    expect(serializeFlashcardsCsv([])).toBe("japanese,english,folder");
+    expect(serializeFlashcardsCsv([])).toBe("japanese,english,collection");
   });
 });
 
-describe("folderNames", () => {
-  it("returns distinct folders in first-seen order", () => {
+describe("collectionNames", () => {
+  it("returns distinct collections in first-seen order", () => {
     const cards = [
-      { id: "1", japanese: "猫", english: "cat", folder: "Animals" },
-      { id: "2", japanese: "犬", english: "dog", folder: "Animals" },
-      { id: "3", japanese: "本", english: "book", folder: "Objects" },
+      { id: "1", japanese: "猫", english: "cat", collection: "Animals" },
+      { id: "2", japanese: "犬", english: "dog", collection: "Animals" },
+      { id: "3", japanese: "本", english: "book", collection: "Objects" },
     ];
 
-    expect(folderNames(cards)).toEqual(["Animals", "Objects"]);
+    expect(collectionNames(cards)).toEqual(["Animals", "Objects"]);
   });
 });
