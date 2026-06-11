@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { DEFAULT_FOLDER } from "@/lib/flashcards";
+import { DEFAULT_COLLECTION } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { useCsvImport } from "@/lib/use-csv-import";
 
@@ -75,7 +75,9 @@ export function CsvUpload() {
             </span>
             <span className="block text-sm text-muted">
               One row per card. Columns:{" "}
-              <code className="font-mono text-ink">japanese, english, folder</code>
+              <code className="font-mono text-ink">
+                japanese, english, collection
+              </code>
             </span>
           </span>
         </label>
@@ -84,8 +86,8 @@ export function CsvUpload() {
       <p className="mt-3 text-center text-sm text-muted">
         Pick several files at once if you like. A header row is optional — without
         one, columns are read in order. Cards without a{" "}
-        <span className="font-medium text-ink">folder</span> go to{" "}
-        <span className="font-medium text-ink">{DEFAULT_FOLDER}</span>.
+        <span className="font-medium text-ink">collection</span> go to{" "}
+        <span className="font-medium text-ink">{DEFAULT_COLLECTION}</span>.
       </p>
 
       {error ? (
