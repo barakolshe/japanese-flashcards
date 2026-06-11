@@ -9,18 +9,22 @@ import {
   useState,
 } from "react";
 import {
+  addCard as addCardTo,
   addCollection as addCollectionTo,
   addFolder as addFolderTo,
   appendCards as appendCardsTo,
   deckFromCards,
+  duplicateCollection as duplicateCollectionIn,
   moveCard as moveCardIn,
   moveCollection as moveCollectionIn,
+  removeCard as removeCardFrom,
   removeCollection as removeCollectionFrom,
   removeFolder as removeFolderFrom,
   renameCollection as renameCollectionIn,
   renameFolder as renameFolderIn,
   type Deck,
   type DeckResult,
+  type DuplicateResult,
   type Folder,
 } from "./deck";
 import {
@@ -62,8 +66,14 @@ type FlashcardsStore = {
   renameCollection: (oldName: string, newName: string) => DeckResult;
   /** Delete a collection; its cards fall back to the default collection. */
   removeCollection: (name: string) => void;
+  /** Copy a collection and its cards into a new "<name> copy"; returns the copy's name. */
+  duplicateCollection: (name: string) => DuplicateResult;
+  /** Add a new card to a collection. Returns a validation error if text is blank. */
+  addCard: (japanese: string, english: string, collection: string) => DeckResult;
   /** Move a single card into a collection (creating that collection if it's new). */
   moveCard: (cardId: string, collection: string) => void;
+  /** Delete a single card from the deck. */
+  removeCard: (cardId: string) => void;
   /** Create a new, empty folder. Returns a validation error if the name is taken or blank. */
   addFolder: (name: string) => DeckResult;
   /** Rename a folder. Returns a validation error on conflict. */
@@ -190,6 +200,28 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     [],
   );
 
+  const duplicateCollection = useCallback(
+    (name: string): DuplicateResult => {
+      const result = duplicateCollectionIn(deck, name);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
+  const addCard = useCallback(
+    (japanese: string, english: string, collection: string): DeckResult => {
+      const result = addCardTo(deck, japanese, english, collection);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
+  const removeCard = useCallback((cardId: string) => {
+    setDeck((current) => removeCardFrom(current, cardId));
+  }, []);
+
   const value = useMemo<FlashcardsStore>(
     () => ({
       hydrated,
@@ -204,7 +236,10 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       addCollection,
       renameCollection,
       removeCollection,
+      duplicateCollection,
+      addCard,
       moveCard,
+      removeCard,
       addFolder,
       renameFolder,
       removeFolder,
@@ -220,7 +255,10 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       addCollection,
       renameCollection,
       removeCollection,
+      duplicateCollection,
+      addCard,
       moveCard,
+      removeCard,
       addFolder,
       renameFolder,
       removeFolder,

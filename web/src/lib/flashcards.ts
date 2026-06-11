@@ -35,6 +35,19 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Build a single flashcard with a fresh id. Used when cards are created in the
+ * app rather than parsed from a CSV — adding a card by hand, or duplicating an
+ * existing card into a copied collection.
+ */
+export function createCard(
+  japanese: string,
+  english: string,
+  collection: string,
+): Flashcard {
+  return { id: newId(), japanese, english, collection };
+}
+
 /** Where each column lives, plus how to interpret line numbers and rows. */
 type ColumnLayout = {
   japanese: number;

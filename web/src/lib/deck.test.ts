@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_COLLECTION, type Flashcard } from "./flashcards";
 import {
+  addCard,
   addCollection,
   addFolder,
   appendCards,
   collectionCounts,
   deckFromCards,
+  duplicateCollection,
   folderOfCollection,
   moveCard,
   moveCollection,
+  removeCard,
   removeCollection,
   removeFolder,
   renameCollection,
@@ -258,6 +261,135 @@ describe("moveCard", () => {
     const next = moveCard(deck, "1", "Verbs");
     expect(next.collections).toEqual(["Animals", "Verbs"]);
     expect(next.cards[0].collection).toBe("Verbs");
+  });
+});
+
+describe("duplicateCollection", () => {
+  it("copies the collection and its cards into a '<name> copy' collection", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals"), card("2", "Animals"), card("3", "Objects")],
+      collections: ["Animals", "Objects"],
+      folders: [],
+    };
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy");
+    // Inserted right after the source collection.
+    expect(result.deck.collections).toEqual([
+      "Animals",
+      "Animals copy",
+      "Objects",
+    ]);
+    const copies = result.deck.cards.filter(
+      (c) => c.collection === "Animals copy",
+    );
+    expect(copies).toHaveLength(2);
+    expect(copies.map((c) => c.japanese)).toEqual(["j1", "j2"]);
+  });
+
+  it("gives the copies fresh ids and leaves the originals untouched", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      collections: ["Animals"],
+      folders: [],
+    };
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = result.deck.cards.find((c) => c.collection === "Animals copy");
+    expect(copy).toBeDefined();
+    expect(copy?.id).not.toBe("1");
+    expect(result.deck.cards[0]).toEqual(card("1", "Animals"));
+  });
+
+  it("files the copy in the same folder as the source, right after it", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      collections: ["Animals"],
+      folders: [{ name: "Nature", collections: ["Animals"] }],
+    };
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.folders).toEqual([
+      { name: "Nature", collections: ["Animals", "Animals copy"] },
+    ]);
+  });
+
+  it("deduplicates the copy name when one already exists", () => {
+    const deck: Deck = {
+      cards: [],
+      collections: ["Animals", "Animals copy"],
+      folders: [],
+    };
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.name).toBe("Animals copy 2");
+  });
+
+  it("rejects duplicating a collection that doesn't exist", () => {
+    const deck: Deck = { cards: [], collections: ["Animals"], folders: [] };
+    expect(duplicateCollection(deck, "Ghost").ok).toBe(false);
+  });
+});
+
+describe("addCard", () => {
+  it("adds a card to an existing collection", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      collections: ["Animals"],
+      folders: [],
+    };
+    const result = addCard(deck, "猫", "cat", "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards).toHaveLength(2);
+    expect(result.deck.cards[1]).toMatchObject({
+      japanese: "猫",
+      english: "cat",
+      collection: "Animals",
+    });
+    expect(result.deck.collections).toEqual(["Animals"]);
+  });
+
+  it("trims the text and creates the target collection when it's new", () => {
+    const deck: Deck = { cards: [], collections: [], folders: [] };
+    const result = addCard(deck, "  犬  ", "  dog  ", "Verbs");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.deck.cards[0]).toMatchObject({ japanese: "犬", english: "dog" });
+    expect(result.deck.collections).toEqual(["Verbs"]);
+  });
+
+  it("rejects a blank Japanese or English value", () => {
+    const deck: Deck = { cards: [], collections: ["Animals"], folders: [] };
+    expect(addCard(deck, "", "cat", "Animals").ok).toBe(false);
+    expect(addCard(deck, "猫", "   ", "Animals").ok).toBe(false);
+  });
+});
+
+describe("removeCard", () => {
+  it("removes the card and keeps the collections and folders", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals"), card("2", "Animals")],
+      collections: ["Animals", "Objects"],
+      folders: [{ name: "Nature", collections: ["Animals"] }],
+    };
+    const next = removeCard(deck, "1");
+    expect(next.cards.map((c) => c.id)).toEqual(["2"]);
+    expect(next.collections).toEqual(["Animals", "Objects"]);
+    expect(next.folders).toEqual([{ name: "Nature", collections: ["Animals"] }]);
+  });
+
+  it("is a no-op for an unknown card id", () => {
+    const deck: Deck = {
+      cards: [card("1", "Animals")],
+      collections: ["Animals"],
+      folders: [],
+    };
+    expect(removeCard(deck, "ghost").cards.map((c) => c.id)).toEqual(["1"]);
   });
 });
 

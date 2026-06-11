@@ -1,4 +1,9 @@
-import { DEFAULT_COLLECTION, collectionNames, type Flashcard } from "./flashcards";
+import {
+  createCard,
+  DEFAULT_COLLECTION,
+  collectionNames,
+  type Flashcard,
+} from "./flashcards";
 
 /**
  * A folder groups collections together — the directory layer above collections.
@@ -31,6 +36,14 @@ export type Deck = {
 /** Result of a collection or folder operation that can fail validation. */
 export type DeckResult =
   | { ok: true; deck: Deck }
+  | { ok: false; error: string };
+
+/**
+ * Result of duplicating a collection. Carries the generated name of the copy so
+ * the caller can focus it, since the name is derived rather than user-supplied.
+ */
+export type DuplicateResult =
+  | { ok: true; deck: Deck; name: string }
   | { ok: false; error: string };
 
 /** Case-insensitive, whitespace-insensitive key for comparing names. */
@@ -149,6 +162,97 @@ export function renameCollection(
         ),
       })),
     },
+  };
+}
+
+/**
+ * Pick a free name for a copy of `base`, e.g. `Animals copy`, then
+ * `Animals copy 2`, `Animals copy 3`, ... skipping any that already exist
+ * (compared case-insensitively).
+ */
+function uniqueCopyName(collections: string[], base: string): string {
+  const taken = new Set(collections.map(key));
+  const first = `${base} copy`;
+  if (!taken.has(key(first))) return first;
+  let n = 2;
+  while (taken.has(key(`${base} copy ${n}`))) n++;
+  return `${base} copy ${n}`;
+}
+
+/**
+ * Duplicate a collection and every card in it into a new collection named
+ * `"<collection> copy"` (deduplicated if that name is taken). The copies are
+ * fresh cards with new ids, so editing or moving them never touches the
+ * originals. The new collection is inserted right after the source; if the
+ * source is filed under a folder, the copy joins that same folder right after
+ * it.
+ */
+export function duplicateCollection(deck: Deck, name: string): DuplicateResult {
+  if (!deck.collections.includes(name)) {
+    return { ok: false, error: `There's no collection named "${name}".` };
+  }
+  const newName = uniqueCopyName(deck.collections, name);
+  const copies = deck.cards
+    .filter((card) => card.collection === name)
+    .map((card) => createCard(card.japanese, card.english, newName));
+
+  const collections = [...deck.collections];
+  collections.splice(collections.indexOf(name) + 1, 0, newName);
+
+  const folders = deck.folders.map((folder) => {
+    const at = folder.collections.indexOf(name);
+    if (at === -1) return folder;
+    const next = [...folder.collections];
+    next.splice(at + 1, 0, newName);
+    return { ...folder, collections: next };
+  });
+
+  return {
+    ok: true,
+    deck: { cards: [...deck.cards, ...copies], collections, folders },
+    name: newName,
+  };
+}
+
+/**
+ * Add a new card to a collection. Both the Japanese and English text are
+ * required; a blank value is rejected. The target collection is created
+ * (ungrouped) if it doesn't exist yet, mirroring {@link moveCard}.
+ */
+export function addCard(
+  deck: Deck,
+  japanese: string,
+  english: string,
+  collection: string,
+): DeckResult {
+  const j = japanese.trim();
+  const e = english.trim();
+  const missing: string[] = [];
+  if (!j) missing.push("Japanese");
+  if (!e) missing.push("English");
+  if (missing.length > 0) {
+    return { ok: false, error: `Add the ${missing.join(" and ")} text first.` };
+  }
+
+  const target = collection.trim() || DEFAULT_COLLECTION;
+  const collections = deck.collections.some((c) => key(c) === key(target))
+    ? deck.collections
+    : [...deck.collections, target];
+  return {
+    ok: true,
+    deck: { ...deck, cards: [...deck.cards, createCard(j, e, target)], collections },
+  };
+}
+
+/**
+ * Remove a single card from the deck. Collections and folders are left
+ * untouched, so a collection that empties out stays in the list (consistent with
+ * how the app keeps empty collections around) until it's deleted explicitly.
+ */
+export function removeCard(deck: Deck, cardId: string): Deck {
+  return {
+    ...deck,
+    cards: deck.cards.filter((card) => card.id !== cardId),
   };
 }
 
