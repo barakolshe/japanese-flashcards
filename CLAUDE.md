@@ -44,6 +44,7 @@ Each issue object has this shape:
 ```
 
 Rules when editing the file:
+
 - Generate a fresh UUID for `id`; set `idea_id` to the id in `.project_idea`.
 - New issues start in `backlog`. `order` is the position within a status column (use max existing order in that column + 1).
 - Always update `updated_at` when you change an issue.
