@@ -2,16 +2,38 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### Configure Firebase
+
+The deck and study preference are persisted in [Cloud Firestore](https://firebase.google.com/docs/firestore),
+so the app needs a Firebase project to talk to. It's single-user with no sign-in.
+
+1. Create a Firebase project and enable **Cloud Firestore**.
+2. Add a **Web app** to the project and copy its `firebaseConfig` values.
+3. Copy `.env.example` to `.env.local` and fill in the `NEXT_PUBLIC_FIREBASE_*`
+   variables. These are public (they identify the project, not secrets).
+4. Set Firestore security rules to allow access to the two documents the app
+   uses — `flashcards/deck` and `flashcards/front`. Since there's no auth, the
+   simplest workable rule is to allow read/write on that collection, e.g.:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /flashcards/{doc} {
+         allow read, write: if true;
+       }
+     }
+   }
+   ```
+
+   Tighten this however suits you; just know the client only ever reads/writes
+   those two documents.
+
+### Run the dev server
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.

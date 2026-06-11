@@ -1,33 +1,49 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Deck } from "./deck";
-import {
+
+/**
+ * The storage layer talks to Firestore through the modular SDK. We mock both the
+ * `getDb` handle and the handful of `firebase/firestore` functions it uses with a
+ * tiny in-memory store keyed by document path, so these tests exercise the real
+ * validation and payload-shaping logic without a network or a live project.
+ */
+
+const DECK_PATH = "flashcards/deck";
+const FRONT_PATH = "flashcards/front";
+
+const mocks = vi.hoisted(() => ({
+  // Swappable so a single test can make Firestore "fail".
+  getDb: vi.fn(() => ({}) as unknown),
+  store: new Map<string, Record<string, unknown>>(),
+}));
+
+vi.mock("./firebase", () => ({
+  getDb: () => mocks.getDb(),
+}));
+
+vi.mock("firebase/firestore", () => ({
+  doc: (_db: unknown, collection: string, id: string) => ({
+    path: `${collection}/${id}`,
+  }),
+  getDoc: async (ref: { path: string }) => {
+    const data = mocks.store.get(ref.path);
+    return { exists: () => data !== undefined, data: () => data };
+  },
+  setDoc: async (ref: { path: string }, data: Record<string, unknown>) => {
+    mocks.store.set(ref.path, data);
+  },
+  deleteDoc: async (ref: { path: string }) => {
+    mocks.store.delete(ref.path);
+  },
+}));
+
+const {
   clearStoredDeck,
   loadStoredDeck,
   loadStoredFront,
   saveDeck,
   saveFront,
-} from "./deck-storage";
-
-const STORAGE_KEY = "flashcards:deck:v1";
-const FRONT_STORAGE_KEY = "flashcards:front:v1";
-
-/** Minimal in-memory localStorage stand-in for the node test environment. */
-function makeLocalStorage() {
-  const store = new Map<string, string>();
-  return {
-    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
-    setItem: (key: string, value: string) => {
-      store.set(key, String(value));
-    },
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-    clear: () => store.clear(),
-    raw: store,
-  };
-}
-
-let localStorage: ReturnType<typeof makeLocalStorage>;
+} = await import("./deck-storage");
 
 const sampleDeck: Deck = {
   cards: [
@@ -38,106 +54,99 @@ const sampleDeck: Deck = {
 };
 
 beforeEach(() => {
-  localStorage = makeLocalStorage();
-  vi.stubGlobal("window", { localStorage });
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+  mocks.store.clear();
+  mocks.getDb.mockReset();
+  mocks.getDb.mockReturnValue({} as unknown);
 });
 
 describe("saveDeck / loadStoredDeck", () => {
-  it("round-trips a deck through storage", () => {
-    saveDeck(sampleDeck);
-    expect(loadStoredDeck()).toEqual(sampleDeck);
+  it("round-trips a deck through storage", async () => {
+    await saveDeck(sampleDeck);
+    expect(await loadStoredDeck()).toEqual(sampleDeck);
   });
 
-  it("stores a versioned payload, not the bare deck", () => {
-    saveDeck(sampleDeck);
-    const stored = JSON.parse(localStorage.raw.get(STORAGE_KEY)!);
+  it("stores a versioned payload, not the bare deck", async () => {
+    await saveDeck(sampleDeck);
+    const stored = mocks.store.get(DECK_PATH)!;
     expect(stored.version).toBe(1);
     expect(stored.deck).toEqual(sampleDeck);
   });
 
-  it("returns null when nothing is stored", () => {
-    expect(loadStoredDeck()).toBeNull();
+  it("returns null when nothing is stored", async () => {
+    expect(await loadStoredDeck()).toBeNull();
   });
 });
 
 describe("loadStoredDeck validation", () => {
-  it("discards corrupt JSON", () => {
-    localStorage.setItem(STORAGE_KEY, "{not json");
-    expect(loadStoredDeck()).toBeNull();
+  it("discards a payload from a different version", async () => {
+    mocks.store.set(DECK_PATH, { version: 99, deck: sampleDeck });
+    expect(await loadStoredDeck()).toBeNull();
   });
 
-  it("discards a payload from a different version", () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ version: 99, deck: sampleDeck }),
-    );
-    expect(loadStoredDeck()).toBeNull();
+  it("discards a deck with the wrong shape", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: { cards: [{ id: "1", japanese: "犬" }], folders: [] },
+    });
+    expect(await loadStoredDeck()).toBeNull();
   });
 
-  it("discards a deck with the wrong shape", () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        deck: { cards: [{ id: "1", japanese: "犬" }], folders: [] },
-      }),
-    );
-    expect(loadStoredDeck()).toBeNull();
-  });
-
-  it("discards a deck whose folders aren't all strings", () => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ version: 1, deck: { cards: [], folders: [1, 2] } }),
-    );
-    expect(loadStoredDeck()).toBeNull();
+  it("discards a deck whose folders aren't all strings", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 1,
+      deck: { cards: [], folders: [1, 2] },
+    });
+    expect(await loadStoredDeck()).toBeNull();
   });
 });
 
 describe("clearStoredDeck", () => {
-  it("removes a saved deck", () => {
-    saveDeck(sampleDeck);
-    clearStoredDeck();
-    expect(loadStoredDeck()).toBeNull();
+  it("removes a saved deck", async () => {
+    await saveDeck(sampleDeck);
+    await clearStoredDeck();
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("leaves the saved direction untouched", async () => {
+    await saveDeck(sampleDeck);
+    await saveFront("english");
+    await clearStoredDeck();
+    expect(await loadStoredFront()).toBe("english");
   });
 });
 
 describe("saveFront / loadStoredFront", () => {
-  it("round-trips the chosen direction", () => {
-    saveFront("english");
-    expect(loadStoredFront()).toBe("english");
-    saveFront("japanese");
-    expect(loadStoredFront()).toBe("japanese");
+  it("round-trips the chosen direction", async () => {
+    await saveFront("english");
+    expect(await loadStoredFront()).toBe("english");
+    await saveFront("japanese");
+    expect(await loadStoredFront()).toBe("japanese");
   });
 
-  it("returns null when nothing is stored", () => {
-    expect(loadStoredFront()).toBeNull();
+  it("returns null when nothing is stored", async () => {
+    expect(await loadStoredFront()).toBeNull();
   });
 
-  it("discards an unrecognized value", () => {
-    localStorage.setItem(FRONT_STORAGE_KEY, "sideways");
-    expect(loadStoredFront()).toBeNull();
+  it("discards an unrecognized value", async () => {
+    mocks.store.set(FRONT_PATH, { front: "sideways" });
+    expect(await loadStoredFront()).toBeNull();
   });
 });
 
-describe("without browser storage (SSR)", () => {
+describe("when Firestore is unavailable", () => {
   beforeEach(() => {
-    vi.unstubAllGlobals();
-    vi.stubGlobal("window", undefined);
+    // Simulate a missing config / offline / denied-by-rules situation: every
+    // call to the db throws.
+    mocks.getDb.mockImplementation(() => {
+      throw new Error("Firestore unavailable");
+    });
   });
 
-  it("loadStoredDeck returns null and writes never throw", () => {
-    expect(loadStoredDeck()).toBeNull();
-    expect(() => saveDeck(sampleDeck)).not.toThrow();
-    expect(() => clearStoredDeck()).not.toThrow();
-  });
-
-  it("front helpers are also safe without storage", () => {
-    expect(loadStoredFront()).toBeNull();
-    expect(() => saveFront("english")).not.toThrow();
+  it("loads resolve to null and writes never reject", async () => {
+    await expect(loadStoredDeck()).resolves.toBeNull();
+    await expect(loadStoredFront()).resolves.toBeNull();
+    await expect(saveDeck(sampleDeck)).resolves.toBeUndefined();
+    await expect(clearStoredDeck()).resolves.toBeUndefined();
+    await expect(saveFront("english")).resolves.toBeUndefined();
   });
 });
