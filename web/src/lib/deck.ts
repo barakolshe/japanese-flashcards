@@ -17,6 +17,14 @@ export type Folder = {
   collections: string[];
 };
 
+/** A tag the user can pin to collections, with a color from the tag palette. */
+export type Tag = {
+  /** Display name as first typed; compared case-insensitively elsewhere. */
+  name: string;
+  /** CSS color value (from `tag-colors`) used to paint the tag. */
+  color: string;
+};
+
 /**
  * A working deck: the loaded cards, the collections the user can sort them into,
  * and the folders those collections are grouped under.
@@ -26,11 +34,19 @@ export type Folder = {
  * collection referenced by a card, in first-seen order, followed by any empty
  * collections the user has added. Folders reference collections by name; every
  * name in a folder is also present in `collections`.
+ *
+ * Collections can be tagged: `tags` is the catalog of tags currently in use
+ * (with their colors, in creation order) and `collectionTags` maps a collection
+ * name to the tag names pinned to it. Tags exist only while assigned — dropping
+ * a tag from its last collection removes it from the catalog. Tagging is an
+ * in-app aid only and is never written to the exported CSV.
  */
 export type Deck = {
   cards: Flashcard[];
   collections: string[];
   folders: Folder[];
+  tags: Tag[];
+  collectionTags: Record<string, string[]>;
 };
 
 /** Result of a collection or folder operation that can fail validation. */
@@ -51,9 +67,37 @@ function key(name: string): string {
   return name.trim().toLowerCase();
 }
 
-/** Build a fresh deck from a parsed set of cards (no folders yet). */
+/** Build a fresh deck from a parsed set of cards (no folders or tags yet). */
 export function deckFromCards(cards: Flashcard[]): Deck {
-  return { cards, collections: collectionNames(cards), folders: [] };
+  return {
+    cards,
+    collections: collectionNames(cards),
+    folders: [],
+    tags: [],
+    collectionTags: {},
+  };
+}
+
+/** The tag keys still pinned to at least one of the given collections. */
+function usedTagKeys(
+  collections: string[],
+  collectionTags: Record<string, string[]>,
+): Set<string> {
+  const used = new Set<string>();
+  for (const collection of collections) {
+    for (const tag of collectionTags[collection] ?? []) used.add(key(tag));
+  }
+  return used;
+}
+
+/** Drop tags from the catalog that no collection references anymore. */
+function pruneTags(
+  tags: Tag[],
+  collections: string[],
+  collectionTags: Record<string, string[]>,
+): Tag[] {
+  const used = usedTagKeys(collections, collectionTags);
+  return tags.filter((tag) => used.has(key(tag.name)));
 }
 
 /**
@@ -146,6 +190,12 @@ export function renameCollection(
       error: `A collection named "${trimmed}" already exists.`,
     };
   }
+  // Carry the collection's tags over to its new name.
+  const collectionTags = { ...deck.collectionTags };
+  if (oldName !== trimmed && oldName in collectionTags) {
+    collectionTags[trimmed] = collectionTags[oldName];
+    delete collectionTags[oldName];
+  }
   return {
     ok: true,
     deck: {
@@ -161,6 +211,8 @@ export function renameCollection(
           collection === oldName ? trimmed : collection,
         ),
       })),
+      tags: deck.tags,
+      collectionTags,
     },
   };
 }
@@ -207,9 +259,21 @@ export function duplicateCollection(deck: Deck, name: string): DuplicateResult {
     return { ...folder, collections: next };
   });
 
+  // The copy starts with the same tags as its source.
+  const collectionTags = { ...deck.collectionTags };
+  if (deck.collectionTags[name]) {
+    collectionTags[newName] = [...deck.collectionTags[name]];
+  }
+
   return {
     ok: true,
-    deck: { cards: [...deck.cards, ...copies], collections, folders },
+    deck: {
+      cards: [...deck.cards, ...copies],
+      collections,
+      folders,
+      tags: deck.tags,
+      collectionTags,
+    },
     name: newName,
   };
 }
@@ -278,7 +342,16 @@ export function removeCollection(deck: Deck, name: string): Deck {
     ...folder,
     collections: folder.collections.filter((collection) => collection !== name),
   }));
-  return { cards, collections, folders };
+  // The collection's tags go with it; any tag left on nothing drops out.
+  const collectionTags = { ...deck.collectionTags };
+  delete collectionTags[name];
+  return {
+    cards,
+    collections,
+    folders,
+    tags: pruneTags(deck.tags, collections, collectionTags),
+    collectionTags,
+  };
 }
 
 /**
@@ -386,4 +459,85 @@ export function moveCollection(
             : f,
         );
   return { ...deck, folders };
+}
+
+/** The color of a tag, looked up case-insensitively (undefined if unknown). */
+export function tagColor(deck: Deck, name: string): string | undefined {
+  return deck.tags.find((tag) => key(tag.name) === key(name))?.color;
+}
+
+/** Tag names pinned to a collection, in assignment order (empty if none). */
+export function tagsForCollection(deck: Deck, collection: string): string[] {
+  return deck.collectionTags[collection] ?? [];
+}
+
+/** Collections carrying a given tag, in collection order. */
+export function collectionsForTag(deck: Deck, name: string): string[] {
+  return deck.collections.filter((collection) =>
+    (deck.collectionTags[collection] ?? []).some((tag) => key(tag) === key(name)),
+  );
+}
+
+/**
+ * Pin a tag to a collection, creating it with `color` if the name is new to the
+ * deck. A name matching an existing tag reuses that tag's spelling and color, so
+ * `color` only applies to genuinely new tags. Re-adding a tag the collection
+ * already has is a no-op. Rejects a blank name or an unknown collection.
+ */
+export function addCollectionTag(
+  deck: Deck,
+  collection: string,
+  name: string,
+  color: string,
+): DeckResult {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Tag name can't be empty." };
+  }
+  if (!deck.collections.includes(collection)) {
+    return { ok: false, error: `There's no collection named "${collection}".` };
+  }
+  const existing = deck.tags.find((tag) => key(tag.name) === key(trimmed));
+  const canonical = existing ? existing.name : trimmed;
+  const current = deck.collectionTags[collection] ?? [];
+  if (current.some((tag) => key(tag) === key(canonical))) {
+    return { ok: true, deck };
+  }
+  return {
+    ok: true,
+    deck: {
+      ...deck,
+      tags: existing ? deck.tags : [...deck.tags, { name: trimmed, color }],
+      collectionTags: {
+        ...deck.collectionTags,
+        [collection]: [...current, canonical],
+      },
+    },
+  };
+}
+
+/**
+ * Unpin a tag from a collection. A collection left with no tags drops its entry,
+ * and a tag left on no collections drops out of the catalog. Unknown collection
+ * or tag is a no-op.
+ */
+export function removeCollectionTag(
+  deck: Deck,
+  collection: string,
+  name: string,
+): Deck {
+  const current = deck.collectionTags[collection];
+  if (!current) return deck;
+  const next = current.filter((tag) => key(tag) !== key(name));
+  if (next.length === current.length) return deck;
+
+  const collectionTags = { ...deck.collectionTags };
+  if (next.length === 0) delete collectionTags[collection];
+  else collectionTags[collection] = next;
+
+  return {
+    ...deck,
+    collectionTags,
+    tags: pruneTags(deck.tags, deck.collections, collectionTags),
+  };
 }

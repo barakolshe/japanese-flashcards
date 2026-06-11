@@ -5,9 +5,10 @@ import { serializeFlashcardsCsv, type Flashcard } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
-import type { Folder } from "@/lib/deck";
+import type { Folder, Tag } from "@/lib/deck";
 import type { StudyTarget } from "./deck-study";
 import { ImportNotice } from "./csv-upload";
+import { TagDot, tagTint } from "./tags";
 
 type StudySetupProps = {
   /** Which side cards show first. */
@@ -45,8 +46,10 @@ export function StudySetup({
   onStart,
   onOrganize,
 }: StudySetupProps) {
-  const { cards, collections, folders, addCards, clear } = useFlashcards();
+  const { cards, collections, folders, tags, collectionTags, addCards, clear } =
+    useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const importer = useCsvImport(addCards);
 
   const counts = useMemo(() => {
@@ -69,6 +72,19 @@ export function StudySetup({
   const ungrouped = useMemo(
     () => collections.filter((collection) => !filed.has(collection)),
     [collections, filed],
+  );
+
+  // Collections carrying the selected tag, across all folders (flattened).
+  const taggedCollections = useMemo(
+    () =>
+      tagFilter
+        ? collections.filter((collection) =>
+            (collectionTags[collection] ?? []).some(
+              (name) => name.toLowerCase() === tagFilter.toLowerCase(),
+            ),
+          )
+        : [],
+    [tagFilter, collections, collectionTags],
   );
 
   const hasFocusOptions = folders.length > 0 || collections.length > 1;
@@ -178,29 +194,50 @@ export function StudySetup({
             Or focus on a folder or collection
           </h3>
 
-          {folders.map((folder) => (
-            <FolderGroup
-              key={folder.name}
-              folder={folder}
-              counts={counts}
-              onStart={onStart}
-            />
-          ))}
+          {tags.length > 0 ? (
+            <TagFilter tags={tags} active={tagFilter} onSelect={setTagFilter} />
+          ) : null}
 
-          {ungrouped.length > 0 ? (
-            <div>
-              {folders.length > 0 ? (
-                <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted/80">
-                  Ungrouped
-                </p>
-              ) : null}
+          {tagFilter ? (
+            taggedCollections.length > 0 ? (
               <CollectionGrid
-                collections={ungrouped}
+                collections={taggedCollections}
                 counts={counts}
                 onStart={onStart}
               />
-            </div>
-          ) : null}
+            ) : (
+              <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+                No collections are tagged{" "}
+                <span className="font-medium text-ink">{tagFilter}</span>.
+              </p>
+            )
+          ) : (
+            <>
+              {folders.map((folder) => (
+                <FolderGroup
+                  key={folder.name}
+                  folder={folder}
+                  counts={counts}
+                  onStart={onStart}
+                />
+              ))}
+
+              {ungrouped.length > 0 ? (
+                <div>
+                  {folders.length > 0 ? (
+                    <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted/80">
+                      Ungrouped
+                    </p>
+                  ) : null}
+                  <CollectionGrid
+                    collections={ungrouped}
+                    counts={counts}
+                    onStart={onStart}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>
@@ -286,6 +323,57 @@ function CollectionGrid({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Filter the focus list by tag. "All" clears the filter; selecting the active
+ * tag again also clears it. Each tag carries its color on a dot, and the active
+ * chip tints in that color. With a tag selected, the list flattens to every
+ * collection carrying it, across folders.
+ */
+function TagFilter({
+  tags,
+  active,
+  onSelect,
+}: {
+  tags: Tag[];
+  active: string | null;
+  onSelect: (tag: string | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        aria-pressed={active === null}
+        onClick={() => onSelect(null)}
+        className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+          active === null
+            ? "border-primary bg-primary/[0.08] text-primary"
+            : "border-border bg-surface text-ink hover:border-ink/30"
+        }`}
+      >
+        All
+      </button>
+      {tags.map((tag) => {
+        const isActive = active?.toLowerCase() === tag.name.toLowerCase();
+        return (
+          <button
+            key={tag.name}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onSelect(isActive ? null : tag.name)}
+            style={isActive ? tagTint(tag.color) : undefined}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              isActive ? "" : "border-border bg-surface hover:border-ink/30"
+            }`}
+          >
+            <TagDot color={tag.color} />
+            {tag.name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

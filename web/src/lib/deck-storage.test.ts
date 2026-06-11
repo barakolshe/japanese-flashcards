@@ -52,6 +52,8 @@ const sampleDeck: Deck = {
   ],
   collections: ["Animals", "Phrases"],
   folders: [{ name: "Nature", collections: ["Animals"] }],
+  tags: [{ name: "JLPT", color: "oklch(0.62 0.16 18)" }],
+  collectionTags: { Animals: ["JLPT"] },
 };
 
 beforeEach(() => {
@@ -107,6 +109,48 @@ describe("loadStoredDeck validation", () => {
     });
     expect(await loadStoredDeck()).toBeNull();
   });
+
+  it("loads a pre-tagging v2 deck, filling in empty tag state", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: { cards: [], collections: ["Animals"], folders: [] },
+    });
+    expect(await loadStoredDeck()).toEqual({
+      cards: [],
+      collections: ["Animals"],
+      folders: [],
+      tags: [],
+      collectionTags: {},
+    });
+  });
+
+  it("discards a deck whose tags are malformed", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [],
+        collections: [],
+        folders: [],
+        tags: [{ name: "JLPT" }],
+        collectionTags: {},
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
+  it("discards a deck whose collectionTags isn't a map of string arrays", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [],
+        collections: [],
+        folders: [],
+        tags: [],
+        collectionTags: { Animals: [1] },
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
 });
 
 describe("loadStoredDeck migration", () => {
@@ -129,6 +173,8 @@ describe("loadStoredDeck migration", () => {
       ],
       collections: ["Animals", "Objects", "Empty"],
       folders: [],
+      tags: [],
+      collectionTags: {},
     });
   });
 

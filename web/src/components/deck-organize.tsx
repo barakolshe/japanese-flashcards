@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { DEFAULT_COLLECTION } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
+import { DEFAULT_TAG_COLOR, nextTagColor, TAG_COLORS } from "@/lib/tag-colors";
+import { TagDot } from "./tags";
 
 type DeckOrganizeProps = {
   /** Return to the deck setup screen. */
@@ -23,7 +25,8 @@ const NO_FOLDER = "";
  * only — the card's Japanese and English text is read-only here.
  */
 export function DeckOrganize({ onBack }: DeckOrganizeProps) {
-  const { cards, collections, folders, moveCard, removeCard } = useFlashcards();
+  const { cards, collections, folders, tags, collectionTags, moveCard, removeCard } =
+    useFlashcards();
   const [filter, setFilter] = useState<Filter>(ALL);
 
   const counts = useMemo(() => {
@@ -34,6 +37,25 @@ export function DeckOrganize({ onBack }: DeckOrganizeProps) {
     }
     return map;
   }, [cards, collections]);
+
+  // Map a tag name to its color so chips and dots can paint without a lookup.
+  const colorByTag = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tag of tags) map.set(tag.name.toLowerCase(), tag.color);
+    return map;
+  }, [tags]);
+
+  // The colors of each collection's tags, for the dots shown on its chip.
+  const tagDotsByCollection = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const collection of collections) {
+      const colors = (collectionTags[collection] ?? []).map(
+        (name) => colorByTag.get(name.toLowerCase()) ?? DEFAULT_TAG_COLOR,
+      );
+      if (colors.length > 0) map.set(collection, colors);
+    }
+    return map;
+  }, [collections, collectionTags, colorByTag]);
 
   const filed = useMemo(() => {
     const set = new Set<string>();
@@ -93,6 +115,7 @@ export function DeckOrganize({ onBack }: DeckOrganizeProps) {
         <CollectionBar
           collections={collections}
           counts={counts}
+          tagDotsByCollection={tagDotsByCollection}
           totalCards={cards.length}
           filter={filter}
           onFilter={setFilter}
@@ -100,13 +123,19 @@ export function DeckOrganize({ onBack }: DeckOrganizeProps) {
         />
 
         {activeCollection ? (
-          <CollectionActions
-            collection={activeCollection}
-            cardCount={counts.get(activeCollection) ?? 0}
-            onRenamed={(name) => setFilter(name)}
-            onDuplicated={(name) => setFilter(name)}
-            onDeleted={() => setFilter(ALL)}
-          />
+          <>
+            <CollectionActions
+              collection={activeCollection}
+              cardCount={counts.get(activeCollection) ?? 0}
+              onRenamed={(name) => setFilter(name)}
+              onDuplicated={(name) => setFilter(name)}
+              onDeleted={() => setFilter(ALL)}
+            />
+            <CollectionTags
+              collection={activeCollection}
+              colorByTag={colorByTag}
+            />
+          </>
         ) : null}
 
         {activeCollection ? <AddCard collection={activeCollection} /> : null}
@@ -508,6 +537,7 @@ function CollectionAssignRow({
 function CollectionBar({
   collections,
   counts,
+  tagDotsByCollection,
   totalCards,
   filter,
   onFilter,
@@ -515,6 +545,7 @@ function CollectionBar({
 }: {
   collections: string[];
   counts: Map<string, number>;
+  tagDotsByCollection: Map<string, string[]>;
   totalCards: number;
   filter: Filter;
   onFilter: (filter: Filter) => void;
@@ -552,6 +583,7 @@ function CollectionBar({
             key={collection}
             label={collection}
             count={counts.get(collection) ?? 0}
+            dots={tagDotsByCollection.get(collection)}
             active={filter === collection}
             onClick={() => onFilter(collection)}
           />
@@ -779,6 +811,209 @@ function CollectionActions({
 }
 
 /**
+ * Tag editor for the selected collection: shows its tags as removable chips and
+ * an inline form to pin a new or existing one. New tags get a color from the
+ * palette; typing a name that matches an existing tag reuses its color, so the
+ * swatches step aside. Tags created here surface as a filter on the deck screen.
+ */
+function CollectionTags({
+  collection,
+  colorByTag,
+}: {
+  collection: string;
+  colorByTag: Map<string, string>;
+}) {
+  const { tags, collectionTags, addCollectionTag, removeCollectionTag } =
+    useFlashcards();
+  const assigned = collectionTags[collection] ?? [];
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(DEFAULT_TAG_COLOR);
+  const [error, setError] = useState<string | null>(null);
+
+  const colorOf = (tagName: string) =>
+    colorByTag.get(tagName.toLowerCase()) ?? DEFAULT_TAG_COLOR;
+
+  // Existing tags not yet on this collection, offered as one-tap chips.
+  const suggestions = tags.filter(
+    (tag) =>
+      !assigned.some((name) => name.toLowerCase() === tag.name.toLowerCase()),
+  );
+
+  // A typed name that matches an existing tag will reuse that tag's color.
+  const typedMatch = colorByTag.get(name.trim().toLowerCase());
+
+  function openAdd() {
+    setName("");
+    setColor(nextTagColor(tags.map((tag) => tag.color)));
+    setError(null);
+    setAdding(true);
+  }
+
+  function add(tagName: string, tagColor: string) {
+    const result = addCollectionTag(collection, tagName, tagColor);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setName("");
+    setColor(nextTagColor([...tags.map((tag) => tag.color), tagColor]));
+    setError(null);
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    add(name, color);
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted">Tags</span>
+        {assigned.length === 0 ? (
+          <span className="text-sm text-muted/70">None yet</span>
+        ) : (
+          assigned.map((tagName) => (
+            <span
+              key={tagName}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg py-1 pl-2.5 pr-1 text-sm font-medium text-ink"
+            >
+              <TagDot color={colorOf(tagName)} />
+              {tagName}
+              <button
+                type="button"
+                onClick={() => removeCollectionTag(collection, tagName)}
+                aria-label={`Remove tag ${tagName} from ${collection}`}
+                className="rounded-full p-0.5 text-muted transition-colors hover:bg-ink/10 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+              >
+                <XIcon />
+              </button>
+            </span>
+          ))
+        )}
+
+        {adding ? null : (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1 text-sm font-medium text-muted transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <PlusIcon />
+            Tag
+          </button>
+        )}
+      </div>
+
+      {adding ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={name}
+              autoFocus
+              onChange={(event) => {
+                setName(event.target.value);
+                setError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setAdding(false);
+                  setName("");
+                  setError(null);
+                }
+              }}
+              placeholder="Tag name"
+              aria-label={`New tag for ${collection}`}
+              aria-invalid={error !== null}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-muted focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            />
+            {typedMatch ? (
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+                <TagDot color={typedMatch} />
+                Existing tag
+              </span>
+            ) : (
+              <ColorSwatches selected={color} onSelect={setColor} />
+            )}
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-bg transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Add tag
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setName("");
+                setError(null);
+              }}
+              className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Cancel
+            </button>
+          </form>
+
+          {suggestions.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted">Reuse</span>
+              {suggestions.map((tag) => (
+                <button
+                  key={tag.name}
+                  type="button"
+                  onClick={() => add(tag.name, tag.color)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-2.5 py-1 text-sm font-medium text-ink transition-colors hover:border-ink/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <TagDot color={tag.color} />
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {error ? (
+            <p role="alert" className="mt-2 text-sm text-danger">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Palette swatches for choosing a new tag's color, as an accessible radiogroup. */
+function ColorSwatches({
+  selected,
+  onSelect,
+}: {
+  selected: string;
+  onSelect: (color: string) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Tag color" className="flex items-center gap-1">
+      {TAG_COLORS.map((color) => {
+        const isSelected = color.value === selected;
+        return (
+          <button
+            key={color.id}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            aria-label={color.label}
+            onClick={() => onSelect(color.value)}
+            className={`size-6 rounded-full transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+              isSelected ? "ring-2 ring-ink ring-offset-2 ring-offset-surface" : ""
+            }`}
+            style={{ backgroundColor: color.value }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Add a card to the active collection. The form stays open after a successful
  * add and refocuses the Japanese field, so building up a list is a quick rhythm
  * of type, Enter, type. Existing card text stays read-only elsewhere on this
@@ -975,11 +1210,13 @@ function CardRow({
 function Chip({
   label,
   count,
+  dots,
   active,
   onClick,
 }: {
   label: string;
   count: number;
+  dots?: string[];
   active: boolean;
   onClick: () => void;
 }) {
@@ -995,6 +1232,13 @@ function Chip({
       }`}
     >
       {label}
+      {dots && dots.length > 0 ? (
+        <span className="flex items-center gap-0.5">
+          {dots.map((color, index) => (
+            <TagDot key={index} color={color} />
+          ))}
+        </span>
+      ) : null}
       <span
         className={`rounded-full px-1.5 text-xs tabular-nums ${
           active ? "bg-primary/15 text-primary" : "bg-bg text-muted"
@@ -1080,6 +1324,25 @@ function TrashIcon() {
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <path d="M10 11v6" />
       <path d="M14 11v6" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
     </svg>
   );
 }

@@ -11,6 +11,7 @@ import {
 import {
   addCard as addCardTo,
   addCollection as addCollectionTo,
+  addCollectionTag as addCollectionTagTo,
   addFolder as addFolderTo,
   appendCards as appendCardsTo,
   deckFromCards,
@@ -19,6 +20,7 @@ import {
   moveCollection as moveCollectionIn,
   removeCard as removeCardFrom,
   removeCollection as removeCollectionFrom,
+  removeCollectionTag as removeCollectionTagFrom,
   removeFolder as removeFolderFrom,
   renameCollection as renameCollectionIn,
   renameFolder as renameFolderIn,
@@ -26,6 +28,7 @@ import {
   type DeckResult,
   type DuplicateResult,
   type Folder,
+  type Tag,
 } from "./deck";
 import {
   clearStoredDeck,
@@ -50,6 +53,10 @@ type FlashcardsStore = {
   collections: string[];
   /** Folders grouping collections; the directory layer above collections. */
   folders: Folder[];
+  /** The tags in use across collections, with their colors, in creation order. */
+  tags: Tag[];
+  /** Tag names pinned to each collection, keyed by collection name. */
+  collectionTags: Record<string, string[]>;
   /** Which side cards show first; persisted alongside the deck. */
   front: CardFront;
   /** Change which side leads, persisting the choice. */
@@ -82,11 +89,21 @@ type FlashcardsStore = {
   removeFolder: (name: string) => void;
   /** File a collection under a folder, or ungroup it when `folder` is `null`. */
   moveCollection: (collection: string, folder: string | null) => void;
+  /** Pin a tag to a collection, creating it with the given color if it's new. */
+  addCollectionTag: (collection: string, name: string, color: string) => DeckResult;
+  /** Unpin a tag from a collection; a tag left on no collections disappears. */
+  removeCollectionTag: (collection: string, name: string) => void;
 };
 
 const FlashcardsContext = createContext<FlashcardsStore | null>(null);
 
-const EMPTY_DECK: Deck = { cards: [], collections: [], folders: [] };
+const EMPTY_DECK: Deck = {
+  cards: [],
+  collections: [],
+  folders: [],
+  tags: [],
+  collectionTags: {},
+};
 
 function isEmptyDeck(deck: Deck): boolean {
   return (
@@ -222,12 +239,32 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     setDeck((current) => removeCardFrom(current, cardId));
   }, []);
 
+  // Validates against the current deck and reports back synchronously, like
+  // addCollection, so the UI can surface a blank-name error inline.
+  const addCollectionTag = useCallback(
+    (collection: string, name: string, color: string): DeckResult => {
+      const result = addCollectionTagTo(deck, collection, name, color);
+      if (result.ok) setDeck(result.deck);
+      return result;
+    },
+    [deck],
+  );
+
+  const removeCollectionTag = useCallback(
+    (collection: string, name: string) => {
+      setDeck((current) => removeCollectionTagFrom(current, collection, name));
+    },
+    [],
+  );
+
   const value = useMemo<FlashcardsStore>(
     () => ({
       hydrated,
       cards: deck.cards,
       collections: deck.collections,
       folders: deck.folders,
+      tags: deck.tags,
+      collectionTags: deck.collectionTags,
       front,
       setFront,
       loadCards,
@@ -244,6 +281,8 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       renameFolder,
       removeFolder,
       moveCollection,
+      addCollectionTag,
+      removeCollectionTag,
     }),
     [
       hydrated,
@@ -263,6 +302,8 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       renameFolder,
       removeFolder,
       moveCollection,
+      addCollectionTag,
+      removeCollectionTag,
     ],
   );
 

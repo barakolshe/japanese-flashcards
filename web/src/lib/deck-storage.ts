@@ -1,5 +1,5 @@
 import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
-import type { Deck, Folder } from "./deck";
+import type { Deck, Folder, Tag } from "./deck";
 import { getDb } from "./firebase";
 import type { Flashcard } from "./flashcards";
 import type { CardFront } from "./study-direction";
@@ -56,16 +56,57 @@ function isFolder(value: unknown): value is Folder {
   return typeof folder.name === "string" && isStringArray(folder.collections);
 }
 
-function isDeck(value: unknown): value is Deck {
+function isTag(value: unknown): value is Tag {
+  if (typeof value !== "object" || value === null) return false;
+  const tag = value as Record<string, unknown>;
+  return typeof tag.name === "string" && typeof tag.color === "string";
+}
+
+function isCollectionTags(value: unknown): value is Record<string, string[]> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(isStringArray);
+}
+
+/**
+ * Validate a stored v2 deck. `tags`/`collectionTags` are optional so decks saved
+ * before tagging existed still pass (normalized to empty tag state by
+ * {@link normalizeDeck}); when present they're validated.
+ */
+function isStoredDeck(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const deck = value as Record<string, unknown>;
-  return (
-    Array.isArray(deck.cards) &&
-    deck.cards.every(isFlashcard) &&
-    isStringArray(deck.collections) &&
-    Array.isArray(deck.folders) &&
-    deck.folders.every(isFolder)
-  );
+  if (!(Array.isArray(deck.cards) && deck.cards.every(isFlashcard))) {
+    return false;
+  }
+  if (!isStringArray(deck.collections)) return false;
+  if (!(Array.isArray(deck.folders) && deck.folders.every(isFolder))) {
+    return false;
+  }
+  if (
+    deck.tags !== undefined &&
+    !(Array.isArray(deck.tags) && deck.tags.every(isTag))
+  ) {
+    return false;
+  }
+  if (deck.collectionTags !== undefined && !isCollectionTags(deck.collectionTags)) {
+    return false;
+  }
+  return true;
+}
+
+/** Fill in tag fields a pre-tagging deck won't have, so callers get a full Deck. */
+function normalizeDeck(value: unknown): Deck {
+  const deck = value as Record<string, unknown>;
+  return {
+    cards: deck.cards as Deck["cards"],
+    collections: deck.collections as string[],
+    folders: deck.folders as Folder[],
+    tags: (deck.tags as Tag[] | undefined) ?? [],
+    collectionTags:
+      (deck.collectionTags as Record<string, string[]> | undefined) ?? {},
+  };
 }
 
 /** A version-1 card: the collection lived in a `folder` field, no folder layer. */
@@ -95,7 +136,7 @@ function isV1Flashcard(value: unknown): value is V1Flashcard {
  */
 function migrateDeck(version: unknown, deck: unknown): Deck | null {
   if (version === STORAGE_VERSION) {
-    return isDeck(deck) ? deck : null;
+    return isStoredDeck(deck) ? normalizeDeck(deck) : null;
   }
   if (version === 1) {
     if (typeof deck !== "object" || deck === null) return null;
@@ -111,6 +152,8 @@ function migrateDeck(version: unknown, deck: unknown): Deck | null {
       })),
       collections: v1.folders,
       folders: [],
+      tags: [],
+      collectionTags: {},
     };
   }
   return null;
