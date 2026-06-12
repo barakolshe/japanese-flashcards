@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cancelSpeech, isSpeechSupported, speakJapanese } from "./speech";
+import {
+  cancelSpeech,
+  hasJapaneseVoice,
+  isSpeechSupported,
+  speakJapanese,
+} from "./speech";
 
 /** Minimal stand-in for SpeechSynthesisUtterance that records what's set. */
 class FakeUtterance {
@@ -16,12 +21,28 @@ class FakeUtterance {
 
 type Voice = { lang: string; name: string };
 
-function installSpeechApi(voices: Voice[], { speaking = false } = {}) {
+function installSpeechApi(
+  voices: Voice[],
+  { speaking = false, paused = false } = {},
+) {
+  const listeners: Record<string, Array<() => void>> = {};
   const synth = {
     speaking,
+    pending: false,
+    paused,
     cancel: vi.fn(),
     speak: vi.fn(),
+    resume: vi.fn(),
     getVoices: vi.fn(() => voices),
+    addEventListener: vi.fn((type: string, cb: () => void) => {
+      (listeners[type] ??= []).push(cb);
+    }),
+    removeEventListener: vi.fn((type: string, cb: () => void) => {
+      listeners[type] = (listeners[type] ?? []).filter((f) => f !== cb);
+    }),
+    /** Test helper: fire a synthetic event to all current listeners. */
+    dispatch: (type: string) =>
+      (listeners[type] ?? []).slice().forEach((f) => f()),
   };
   // The lib reads these off `window`; node has no window, so fake one.
   vi.stubGlobal("window", {
@@ -30,6 +51,8 @@ function installSpeechApi(voices: Voice[], { speaking = false } = {}) {
   });
   return synth;
 }
+
+const EN_VOICE: Voice = { lang: "en-US", name: "Samantha" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -52,6 +75,23 @@ describe("isSpeechSupported", () => {
   });
 });
 
+describe("hasJapaneseVoice", () => {
+  it("is false when unsupported", () => {
+    vi.stubGlobal("window", {});
+    expect(hasJapaneseVoice()).toBe(false);
+  });
+
+  it("is false when no Japanese voice is installed", () => {
+    installSpeechApi([EN_VOICE]);
+    expect(hasJapaneseVoice()).toBe(false);
+  });
+
+  it("is true when a Japanese voice is installed", () => {
+    installSpeechApi([EN_VOICE, { lang: "ja-JP", name: "Nanami" }]);
+    expect(hasJapaneseVoice()).toBe(true);
+  });
+});
+
 describe("speakJapanese", () => {
   it("does nothing when speech is unsupported", () => {
     vi.stubGlobal("window", {});
@@ -59,7 +99,7 @@ describe("speakJapanese", () => {
   });
 
   it("cancels any in-flight speech before speaking", () => {
-    const synth = installSpeechApi([]);
+    const synth = installSpeechApi([EN_VOICE]);
     speakJapanese("猫");
 
     expect(synth.cancel).toHaveBeenCalledOnce();
@@ -67,7 +107,7 @@ describe("speakJapanese", () => {
   });
 
   it("speaks the given text tagged as Japanese", () => {
-    const synth = installSpeechApi([]);
+    const synth = installSpeechApi([EN_VOICE]);
     speakJapanese("猫");
 
     const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
@@ -77,26 +117,68 @@ describe("speakJapanese", () => {
 
   it("prefers an installed Japanese voice when one exists", () => {
     const jaVoice = { lang: "ja-JP", name: "Kyoko" };
-    const synth = installSpeechApi([
-      { lang: "en-US", name: "Samantha" },
-      jaVoice,
-    ]);
+    const synth = installSpeechApi([EN_VOICE, jaVoice]);
     speakJapanese("猫");
 
     const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
     expect(utterance.voice).toBe(jaVoice);
   });
 
+  it("prefers an exact ja-JP voice over other ja* locales", () => {
+    const jaJp = { lang: "ja-JP", name: "Nanami" };
+    const synth = installSpeechApi([{ lang: "ja-Hira", name: "Other" }, jaJp]);
+    speakJapanese("猫");
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    expect(utterance.voice).toBe(jaJp);
+  });
+
   it("leaves voice unset when no Japanese voice is installed", () => {
-    const synth = installSpeechApi([{ lang: "en-US", name: "Samantha" }]);
+    const synth = installSpeechApi([EN_VOICE]);
     speakJapanese("猫");
 
     const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
     expect(utterance.voice).toBeNull();
   });
 
-  it("wires start/end handlers so callers can track playback", () => {
+  it("waits for voices to load before speaking when none are ready yet", () => {
+    let voices: Voice[] = [];
     const synth = installSpeechApi([]);
+    synth.getVoices.mockImplementation(() => voices);
+
+    speakJapanese("猫");
+    // Voices aren't loaded, so nothing should be spoken yet.
+    expect(synth.speak).not.toHaveBeenCalled();
+    expect(synth.addEventListener).toHaveBeenCalledWith(
+      "voiceschanged",
+      expect.any(Function),
+    );
+
+    // Engine finishes loading voices and notifies.
+    voices = [{ lang: "ja-JP", name: "Nanami" }];
+    synth.dispatch("voiceschanged");
+
+    expect(synth.speak).toHaveBeenCalledOnce();
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    expect(utterance.voice).toEqual({ lang: "ja-JP", name: "Nanami" });
+  });
+
+  it("resumes a paused engine after queuing speech (Chromium nudge)", () => {
+    const synth = installSpeechApi([{ lang: "ja-JP", name: "Nanami" }], {
+      paused: true,
+    });
+    speakJapanese("猫");
+    expect(synth.resume).toHaveBeenCalledOnce();
+  });
+
+  it("does not resume when the engine isn't paused", () => {
+    const synth = installSpeechApi([{ lang: "ja-JP", name: "Nanami" }]);
+    speakJapanese("猫");
+    expect(synth.resume).not.toHaveBeenCalled();
+  });
+
+  it("wires start/end handlers so callers can track playback", () => {
+    const synth = installSpeechApi([EN_VOICE]);
     const onStart = vi.fn();
     const onEnd = vi.fn();
     speakJapanese("猫", { onStart, onEnd });

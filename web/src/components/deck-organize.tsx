@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { DEFAULT_COLLECTION } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
+import { useJapaneseSpeech } from "@/lib/speech";
 import { DEFAULT_TAG_COLOR, nextTagColor, TAG_COLORS } from "@/lib/tag-colors";
 import { TagDot } from "./tags";
 
@@ -28,6 +29,21 @@ export function DeckOrganize({ onBack }: DeckOrganizeProps) {
   const { cards, collections, folders, tags, collectionTags, moveCard, removeCard } =
     useFlashcards();
   const [filter, setFilter] = useState<Filter>(ALL);
+
+  // Shared speech for the card list: one player, with the row whose word is
+  // currently playing tracked so only that row shows the active speaker.
+  const { supported: canSpeak, speaking, speak, stop: stopSpeech } =
+    useJapaneseSpeech();
+  const [speakingCardId, setSpeakingCardId] = useState<string | null>(null);
+
+  function toggleSpeakCard(card: Flashcard) {
+    if (speaking && speakingCardId === card.id) {
+      stopSpeech();
+      return;
+    }
+    setSpeakingCardId(card.id);
+    speak(card.japanese);
+  }
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -148,6 +164,8 @@ export function DeckOrganize({ onBack }: DeckOrganizeProps) {
               collections={collections}
               onMove={(collection) => moveCard(card.id, collection)}
               onRemove={() => removeCard(card.id)}
+              onSpeak={canSpeak ? () => toggleSpeakCard(card) : undefined}
+              speaking={speaking && speakingCardId === card.id}
             />
           ))}
         </ul>
@@ -1131,28 +1149,52 @@ function CardRow({
   collections,
   onMove,
   onRemove,
+  onSpeak,
+  speaking = false,
 }: {
   card: Flashcard;
   collections: string[];
   onMove: (collection: string) => void;
   onRemove: () => void;
+  /** Play/stop the card's Japanese word. Omitted when speech is unsupported. */
+  onSpeak?: () => void;
+  /** Whether this row's word is the one currently playing. */
+  speaking?: boolean;
 }) {
   const selectId = `move-${card.id}`;
   const [confirming, setConfirming] = useState(false);
 
   return (
     <li className="flex items-center justify-between gap-4 py-3.5">
-      <div className="min-w-0">
-        <p
-          lang="ja"
-          className="font-jp truncate text-lg font-medium text-ink"
-          title={card.japanese}
-        >
-          {card.japanese}
-        </p>
-        <p className="truncate text-sm text-muted" title={card.english}>
-          {card.english}
-        </p>
+      <div className="flex min-w-0 items-center gap-2">
+        {onSpeak ? (
+          <button
+            type="button"
+            onClick={onSpeak}
+            aria-label={
+              speaking
+                ? "Stop pronunciation"
+                : `Play pronunciation of ${card.japanese}`
+            }
+            title={speaking ? "Stop" : "Hear pronunciation"}
+            data-speaking={speaking}
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-bg text-muted transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[speaking=true]:border-transparent data-[speaking=true]:bg-primary data-[speaking=true]:text-bg"
+          >
+            <SpeakerIcon speaking={speaking} />
+          </button>
+        ) : null}
+        <div className="min-w-0">
+          <p
+            lang="ja"
+            className="font-jp truncate text-lg font-medium text-ink"
+            title={card.japanese}
+          >
+            {card.japanese}
+          </p>
+          <p className="truncate text-sm text-muted" title={card.english}>
+            {card.english}
+          </p>
+        </div>
       </div>
 
       {confirming ? (
@@ -1303,6 +1345,27 @@ function ChevronDownIcon() {
       className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted"
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function SpeakerIcon({ speaking }: { speaking: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M11 4.7 6.5 8.3H3v7.4h3.5L11 19.3z" />
+      {/* The sound waves firm up while the word is playing. */}
+      <path d="M16 9a4 4 0 0 1 0 6" opacity={speaking ? 1 : 0.85} />
+      <path d="M19 6.5a8 8 0 0 1 0 11" opacity={speaking ? 1 : 0.55} />
     </svg>
   );
 }
