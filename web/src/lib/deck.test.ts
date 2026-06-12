@@ -315,6 +315,19 @@ describe("duplicateCollection", () => {
     expect(result.deck.cards[0]).toEqual(card("1", "Animals"));
   });
 
+  it("carries each card's pronunciation onto the copy", () => {
+    const deck = mk(
+      [{ id: "1", japanese: "猫", english: "cat", collection: "Animals", pronunciation: "neko" }],
+      ["Animals"],
+      [],
+    );
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = result.deck.cards.find((c) => c.collection === "Animals copy");
+    expect(copy?.pronunciation).toBe("neko");
+  });
+
   it("files the copy in the same folder as the source, right after it", () => {
     const deck = mk([card("1", "Animals")], ["Animals"], [
       { name: "Nature", collections: ["Animals"] },

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import {
   sideName,
   type CardOrientation,
@@ -10,6 +10,11 @@ import {
 type FlipCardProps = {
   japanese: string;
   english: string;
+  /**
+   * An English reading of the Japanese word. When present, an eye toggle on the
+   * Japanese side reveals it above the word; omitted cards show no eye control.
+   */
+  pronunciation?: string;
   /** Which side is the prompt (front) and which is the reveal (back). */
   orientation: CardOrientation;
   /** Whether the back (answer) is showing. */
@@ -37,6 +42,7 @@ type FlipCardProps = {
 export function FlipCard({
   japanese,
   english,
+  pronunciation,
   orientation,
   flipped,
   onFlip,
@@ -48,8 +54,16 @@ export function FlipCard({
   const backName = sideName(orientation.back);
   // The speaker reads the Japanese word, so it belongs on whichever side is
   // currently face-up showing Japanese — front by default, back when the
-  // learner reverses the study direction.
+  // learner reverses the study direction. The eye toggle rides along with it.
   const japaneseFaceUp = (flipped ? orientation.back : orientation.front) === "japanese";
+
+  const hasPronunciation = Boolean(pronunciation);
+  const [showPronunciation, setShowPronunciation] = useState(false);
+  // Reset the reveal when the card changes so the next word starts hidden. The
+  // Japanese text is a reliable per-card key here (cards advance one at a time).
+  useEffect(() => {
+    setShowPronunciation(false);
+  }, [japanese]);
 
   return (
     <div className="relative [perspective:1400px]">
@@ -72,6 +86,8 @@ export function FlipCard({
           side={orientation.front}
           japanese={japanese}
           english={english}
+          pronunciation={pronunciation}
+          showPronunciation={showPronunciation}
         />
 
         {/* Back — the answer, primary-tinted and pre-rotated so it reads right. */}
@@ -80,37 +96,86 @@ export function FlipCard({
           side={orientation.back}
           japanese={japanese}
           english={english}
+          pronunciation={pronunciation}
+          showPronunciation={showPronunciation}
         />
       </button>
 
       {/*
-        The speaker is a sibling of the card button, not a child — nesting one
-        button inside another is invalid HTML. It overlays the top-right corner
-        and fades out of view (and the tab order) whenever the face showing isn't
-        the Japanese one, rather than popping in and out.
+        The eye and speaker controls are siblings of the card button, not
+        children — nesting one button inside another is invalid HTML. They sit in
+        the top-right corner and fade out of view (and the tab order) whenever the
+        face showing isn't the Japanese one, rather than popping in and out. Both
+        act on the Japanese word, so they belong only on its side.
       */}
-      {onSpeak ? (
-        <button
-          type="button"
-          onClick={onSpeak}
+      {hasPronunciation || onSpeak ? (
+        <div
           aria-hidden={!japaneseFaceUp}
-          tabIndex={japaneseFaceUp ? 0 : -1}
-          aria-label={
-            speaking ? "Stop pronunciation" : `Play pronunciation of ${japanese}`
-          }
-          title={speaking ? "Stop" : "Hear pronunciation"}
-          data-speaking={speaking}
-          className="group absolute right-3 top-3 z-10 inline-flex size-11 items-center justify-center rounded-full border border-border bg-bg text-muted transition-[color,background-color,border-color,opacity,transform] duration-200 ease-[var(--ease-out-quart)] hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-95 data-[speaking=true]:border-transparent data-[speaking=true]:bg-primary data-[speaking=true]:text-bg aria-hidden:pointer-events-none aria-hidden:opacity-0"
+          className="absolute right-3 top-3 z-10 flex items-center gap-2 transition-opacity duration-200 ease-[var(--ease-out-quart)] aria-hidden:pointer-events-none aria-hidden:opacity-0"
         >
-          {/* Soft ring that radiates only while audio plays. */}
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full bg-primary/30 opacity-0 group-data-[speaking=true]:motion-safe:[animation:speak-pulse_1.4s_var(--ease-out-quart)_infinite]"
-          />
-          <SpeakerIcon speaking={speaking} />
-        </button>
+          {hasPronunciation ? (
+            <button
+              type="button"
+              onClick={() => setShowPronunciation((shown) => !shown)}
+              tabIndex={japaneseFaceUp ? 0 : -1}
+              aria-pressed={showPronunciation}
+              aria-label={
+                showPronunciation ? "Hide pronunciation" : "Show pronunciation"
+              }
+              title={showPronunciation ? "Hide pronunciation" : "Show pronunciation"}
+              data-active={showPronunciation}
+              className="inline-flex size-11 items-center justify-center rounded-full border border-border bg-bg text-muted transition-[color,background-color,border-color,transform] duration-200 ease-[var(--ease-out-quart)] hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-95 data-[active=true]:border-transparent data-[active=true]:bg-primary data-[active=true]:text-bg"
+            >
+              <EyeIcon open={showPronunciation} />
+            </button>
+          ) : null}
+
+          {onSpeak ? (
+            <button
+              type="button"
+              onClick={onSpeak}
+              tabIndex={japaneseFaceUp ? 0 : -1}
+              aria-label={
+                speaking
+                  ? "Stop pronunciation"
+                  : `Play pronunciation of ${japanese}`
+              }
+              title={speaking ? "Stop" : "Hear pronunciation"}
+              data-speaking={speaking}
+              className="group relative inline-flex size-11 items-center justify-center rounded-full border border-border bg-bg text-muted transition-[color,background-color,border-color,transform] duration-200 ease-[var(--ease-out-quart)] hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-95 data-[speaking=true]:border-transparent data-[speaking=true]:bg-primary data-[speaking=true]:text-bg"
+            >
+              {/* Soft ring that radiates only while audio plays. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full bg-primary/30 opacity-0 group-data-[speaking=true]:motion-safe:[animation:speak-pulse_1.4s_var(--ease-out-quart)_infinite]"
+              />
+              <SpeakerIcon speaking={speaking} />
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
+  );
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+      {/* A slash falls across the eye while the reading is hidden. */}
+      {open ? null : <path d="m4 4 16 16" />}
+    </svg>
   );
 }
 
@@ -149,11 +214,15 @@ function CardFace({
   side,
   japanese,
   english,
+  pronunciation,
+  showPronunciation,
 }: {
   position: "front" | "back";
   side: CardSide;
   japanese: string;
   english: string;
+  pronunciation?: string;
+  showPronunciation: boolean;
 }) {
   const isFront = position === "front";
   const isJapanese = side === "japanese";
@@ -163,6 +232,9 @@ function CardFace({
     : "border-primary/25 bg-primary/[0.05] [transform:rotateY(180deg)]";
   const label = isJapanese ? "Japanese" : "Meaning";
   const hint = isFront ? "Tap or press Space to flip" : "Tap to flip back";
+  // The reading sits above the Japanese word, and only there — it's a hint for
+  // saying that word, meaningless on the meaning side.
+  const reading = isJapanese && showPronunciation ? pronunciation : undefined;
 
   return (
     <div
@@ -171,14 +243,21 @@ function CardFace({
       <span className="absolute left-5 top-4 text-xs font-medium uppercase tracking-wide text-muted">
         {label}
       </span>
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2">
         {isJapanese ? (
-          <span
-            lang="ja"
-            className="font-jp text-balance text-center text-5xl font-medium leading-tight text-ink sm:text-6xl"
-          >
-            {japanese}
-          </span>
+          <>
+            {reading ? (
+              <span className="text-balance text-center text-lg font-medium tracking-wide text-primary sm:text-xl">
+                {reading}
+              </span>
+            ) : null}
+            <span
+              lang="ja"
+              className="font-jp text-balance text-center text-5xl font-medium leading-tight text-ink sm:text-6xl"
+            >
+              {japanese}
+            </span>
+          </>
         ) : (
           <span className="text-balance text-center text-3xl font-semibold leading-snug text-ink sm:text-4xl">
             {english}

@@ -10,7 +10,7 @@ A single person learning Japanese (the app's owner). They study at a desk, usual
 
 ## Product Purpose
 
-A personal Japanese-learning flashcards app. The user uploads a CSV of words and the app turns each row into a flip-and-shuffle flashcard (Japanese on one side, English meaning on the other), grouped by the collection named in the file. Collections can be given colored tags, and the deck screen can filter to the collections sharing a tag. The deck and its organization are saved to the cloud (Firestore) between visits, and the user can export their cards back to CSV. Success is: drop in a file, and within seconds be studying clean, correctly-parsed cards with zero ceremony — then find them right where you left them next time, on any device.
+A personal Japanese-learning flashcards app. The user uploads a CSV of words and the app turns each row into a flip-and-shuffle flashcard (Japanese on one side, English meaning on the other), grouped by the collection named in the file. An optional pronunciation column gives an English reading of the word, revealed on the card behind an eye toggle. Collections can be given colored tags, and the deck screen can filter to the collections sharing a tag. The deck and its organization are saved to the cloud (Firestore) between visits, and the user can export their cards back to CSV. Success is: drop in a file, and within seconds be studying clean, correctly-parsed cards with zero ceremony — then find them right where you left them next time, on any device.
 
 ## Brand Personality
 

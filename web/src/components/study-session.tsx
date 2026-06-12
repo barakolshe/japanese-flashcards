@@ -133,6 +133,7 @@ export function StudySession({
         <FlipCard
           japanese={current.japanese}
           english={current.english}
+          pronunciation={current.pronunciation}
           orientation={orientation}
           flipped={flipped}
           onFlip={() => setFlipped((f) => !f)}
