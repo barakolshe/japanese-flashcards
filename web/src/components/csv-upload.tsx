@@ -76,7 +76,7 @@ export function CsvUpload() {
             <span className="block text-sm text-muted">
               One row per card. Columns:{" "}
               <code className="font-mono text-ink">
-                japanese, english, collection
+                japanese, english, collection, pronunciation
               </code>
             </span>
           </span>
@@ -87,7 +87,8 @@ export function CsvUpload() {
         Pick several files at once if you like. A header row is optional — without
         one, columns are read in order. Cards without a{" "}
         <span className="font-medium text-ink">collection</span> go to{" "}
-        <span className="font-medium text-ink">{DEFAULT_COLLECTION}</span>.
+        <span className="font-medium text-ink">{DEFAULT_COLLECTION}</span>;{" "}
+        <span className="font-medium text-ink">pronunciation</span> is optional.
       </p>
 
       {error ? (

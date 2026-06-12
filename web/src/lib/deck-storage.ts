@@ -42,7 +42,9 @@ function isFlashcard(value: unknown): value is Flashcard {
     typeof card.id === "string" &&
     typeof card.japanese === "string" &&
     typeof card.english === "string" &&
-    typeof card.collection === "string"
+    typeof card.collection === "string" &&
+    (card.pronunciation === undefined ||
+      typeof card.pronunciation === "string")
   );
 }
 
