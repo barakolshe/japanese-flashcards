@@ -5,7 +5,7 @@ import { serializeFlashcardsCsv, type Flashcard } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
-import type { Folder, Tag } from "@/lib/deck";
+import type { Tag } from "@/lib/deck";
 import type { StudyTarget } from "./deck-study";
 import { ImportNotice } from "./csv-upload";
 import { TagDot, tagTint } from "./tags";
@@ -49,7 +49,7 @@ export function StudySetup({
   const { cards, collections, folders, tags, collectionTags, addCards, clear } =
     useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const importer = useCsvImport(addCards);
 
   const counts = useMemo(() => {
@@ -74,20 +74,47 @@ export function StudySetup({
     [collections, filed],
   );
 
-  // Collections carrying the selected tag, across all folders (flattened).
-  const taggedCollections = useMemo(
-    () =>
-      tagFilter
-        ? collections.filter((collection) =>
-            (collectionTags[collection] ?? []).some(
-              (name) => name.toLowerCase() === tagFilter.toLowerCase(),
-            ),
-          )
-        : [],
-    [tagFilter, collections, collectionTags],
+  const hasFocusOptions = folders.length > 0 || collections.length > 1;
+
+  // Tag filtering: a collection is shown when no tag is selected, or when it
+  // carries any of the selected tags (OR). Filtering keeps the folder grouping —
+  // it only hides the collections (and folders) that don't match.
+  const selectedKeys = useMemo(
+    () => new Set(selectedTags.map((name) => name.toLowerCase())),
+    [selectedTags],
+  );
+  const isFiltering = selectedTags.length > 0;
+  const matches = (collection: string) =>
+    !isFiltering ||
+    (collectionTags[collection] ?? []).some((name) =>
+      selectedKeys.has(name.toLowerCase()),
+    );
+
+  const visibleFolders = folders
+    .map((folder) => ({ folder, visible: folder.collections.filter(matches) }))
+    .filter(({ visible }) => !isFiltering || visible.length > 0);
+  const visibleUngrouped = ungrouped.filter(matches);
+  const nothingMatches =
+    isFiltering && visibleFolders.length === 0 && visibleUngrouped.length === 0;
+
+  // Every collection currently shown (across folders and ungrouped), for the
+  // "study all shown" button. No collection appears in two places, so no dupes.
+  const visibleCollections = [
+    ...visibleFolders.flatMap(({ visible }) => visible),
+    ...visibleUngrouped,
+  ];
+  const visibleCardCount = visibleCollections.reduce(
+    (sum, collection) => sum + (counts.get(collection) ?? 0),
+    0,
   );
 
-  const hasFocusOptions = folders.length > 0 || collections.length > 1;
+  const toggleTag = (name: string) =>
+    setSelectedTags((prev) =>
+      prev.some((tag) => tag.toLowerCase() === name.toLowerCase())
+        ? prev.filter((tag) => tag.toLowerCase() !== name.toLowerCase())
+        : [...prev, name],
+    );
+  const clearTags = () => setSelectedTags([]);
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -195,42 +222,67 @@ export function StudySetup({
           </h3>
 
           {tags.length > 0 ? (
-            <TagFilter tags={tags} active={tagFilter} onSelect={setTagFilter} />
+            <TagFilter
+              tags={tags}
+              selected={selectedTags}
+              onToggle={toggleTag}
+              onClear={clearTags}
+            />
           ) : null}
 
-          {tagFilter ? (
-            taggedCollections.length > 0 ? (
-              <CollectionGrid
-                collections={taggedCollections}
-                counts={counts}
-                onStart={onStart}
-              />
-            ) : (
-              <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
-                No collections are tagged{" "}
-                <span className="font-medium text-ink">{tagFilter}</span>.
-              </p>
-            )
+          {visibleCollections.length > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                onStart({
+                  kind: "collections",
+                  names: visibleCollections,
+                  title: isFiltering
+                    ? `Tagged ${selectedTags.join(", ")}`
+                    : "All collections",
+                })
+              }
+              disabled={visibleCardCount === 0}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3 text-left font-medium text-primary transition-colors hover:bg-primary/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-60"
+            >
+              <span>
+                {isFiltering
+                  ? `Study all ${visibleCardCount} matching cards`
+                  : `Study all ${visibleCardCount} cards in collections`}
+              </span>
+              <span className="shrink-0 text-xs text-primary/80">
+                {visibleCollections.length} collection
+                {visibleCollections.length === 1 ? "" : "s"}
+              </span>
+            </button>
+          ) : null}
+
+          {nothingMatches ? (
+            <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+              No collections match the selected tag
+              {selectedTags.length === 1 ? "" : "s"}.
+            </p>
           ) : (
             <>
-              {folders.map((folder) => (
+              {visibleFolders.map(({ folder, visible }) => (
                 <FolderGroup
                   key={folder.name}
-                  folder={folder}
+                  name={folder.name}
+                  collections={visible}
                   counts={counts}
                   onStart={onStart}
                 />
               ))}
 
-              {ungrouped.length > 0 ? (
+              {visibleUngrouped.length > 0 ? (
                 <div>
-                  {folders.length > 0 ? (
+                  {visibleFolders.length > 0 ? (
                     <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted/80">
                       Ungrouped
                     </p>
                   ) : null}
                   <CollectionGrid
-                    collections={ungrouped}
+                    collections={visibleUngrouped}
                     counts={counts}
                     onStart={onStart}
                   />
@@ -245,19 +297,23 @@ export function StudySetup({
 }
 
 /**
- * One folder in the focus list: a header that studies the whole folder, with its
- * collections beneath as their own study targets.
+ * One folder in the focus list: a header that studies the collections shown
+ * under it, with each collection beneath as its own study target. Under a tag
+ * filter, `collections` is the folder's matching subset, so "Study all" studies
+ * exactly what's displayed.
  */
 function FolderGroup({
-  folder,
+  name,
+  collections,
   counts,
   onStart,
 }: {
-  folder: Folder;
+  name: string;
+  collections: string[];
   counts: Map<string, number>;
   onStart: (target: StudyTarget) => void;
 }) {
-  const total = folder.collections.reduce(
+  const total = collections.reduce(
     (sum, collection) => sum + (counts.get(collection) ?? 0),
     0,
   );
@@ -266,23 +322,23 @@ function FolderGroup({
     <div>
       <button
         type="button"
-        onClick={() => onStart({ kind: "folder", name: folder.name })}
+        onClick={() => onStart({ kind: "collections", names: collections, title: name })}
         disabled={total === 0}
         className="group flex w-full items-center gap-2.5 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-60"
       >
         <FolderIcon className="shrink-0 text-muted transition-colors group-hover:text-primary" />
         <span className="min-w-0 flex-1 truncate font-semibold text-ink">
-          {folder.name}
+          {name}
         </span>
         <span className="shrink-0 text-xs text-muted">
           {total === 0 ? "Empty" : `Study all ${total}`}
         </span>
       </button>
 
-      {folder.collections.length > 0 ? (
+      {collections.length > 0 ? (
         <div className="mt-2.5 pl-3">
           <CollectionGrid
-            collections={folder.collections}
+            collections={collections}
             counts={counts}
             onStart={onStart}
           />
@@ -327,28 +383,33 @@ function CollectionGrid({
 }
 
 /**
- * Filter the focus list by tag. "All" clears the filter; selecting the active
- * tag again also clears it. Each tag carries its color on a dot, and the active
- * chip tints in that color. With a tag selected, the list flattens to every
- * collection carrying it, across folders.
+ * Filter the focus list by tag. Tags are multi-select: each click toggles a tag
+ * without clearing the others, and a collection is shown when it carries any
+ * selected tag. "All" clears the selection. Each tag carries its color on a dot,
+ * and a selected chip tints in that color. The folder grouping is preserved —
+ * filtering only hides the collections that don't match.
  */
 function TagFilter({
   tags,
-  active,
-  onSelect,
+  selected,
+  onToggle,
+  onClear,
 }: {
   tags: Tag[];
-  active: string | null;
-  onSelect: (tag: string | null) => void;
+  selected: string[];
+  onToggle: (tag: string) => void;
+  onClear: () => void;
 }) {
+  const selectedKeys = new Set(selected.map((name) => name.toLowerCase()));
+  const noneSelected = selected.length === 0;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        aria-pressed={active === null}
-        onClick={() => onSelect(null)}
+        aria-pressed={noneSelected}
+        onClick={onClear}
         className={`inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-          active === null
+          noneSelected
             ? "border-primary bg-primary/[0.08] text-primary"
             : "border-border bg-surface text-ink hover:border-ink/30"
         }`}
@@ -356,13 +417,13 @@ function TagFilter({
         All
       </button>
       {tags.map((tag) => {
-        const isActive = active?.toLowerCase() === tag.name.toLowerCase();
+        const isActive = selectedKeys.has(tag.name.toLowerCase());
         return (
           <button
             key={tag.name}
             type="button"
             aria-pressed={isActive}
-            onClick={() => onSelect(isActive ? null : tag.name)}
+            onClick={() => onToggle(tag.name)}
             style={isActive ? tagTint(tag.color) : undefined}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium text-ink transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
               isActive ? "" : "border-border bg-surface hover:border-ink/30"
