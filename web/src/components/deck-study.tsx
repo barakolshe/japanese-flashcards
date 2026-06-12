@@ -11,12 +11,15 @@ import { StudySetup } from "./study-setup";
 
 /**
  * What the user chose to study. `undefined` means not yet studying; otherwise a
- * whole deck, a single collection, or a whole folder (all its collections).
+ * whole deck, a single collection, a whole folder (all its collections), or an
+ * explicit set of collections (used by the tag filter — "study everything
+ * shown") with a title to label the session.
  */
 export type StudyTarget =
   | { kind: "all" }
   | { kind: "collection"; name: string }
-  | { kind: "folder"; name: string };
+  | { kind: "folder"; name: string }
+  | { kind: "collections"; names: string[]; title: string };
 type Target = StudyTarget | undefined;
 
 /**
@@ -40,16 +43,25 @@ export function DeckStudy() {
     } else if (target.kind === "collection") {
       deck = selectDeck(cards, target.name);
       title = target.name;
-    } else {
+    } else if (target.kind === "folder") {
       const folder = folders.find((f) => f.name === target.name);
       deck = selectDeckByCollections(cards, folder?.collections ?? []);
       title = target.name;
+    } else {
+      deck = selectDeckByCollections(cards, target.names);
+      title = target.title;
     }
 
     return (
       <StudySession
         // Remount with a fresh session when the study target changes.
-        key={`${target.kind}:${target.kind === "all" ? "" : target.name}`}
+        key={
+          target.kind === "all"
+            ? "all"
+            : target.kind === "collections"
+              ? `collections:${target.title}:${target.names.join(",")}`
+              : `${target.kind}:${target.name}`
+        }
         deck={deck}
         title={title}
         orientation={orientationFor(front)}
