@@ -8,6 +8,7 @@ import { orientationFor } from "@/lib/study-direction";
 import { DeckOrganize } from "./deck-organize";
 import { StudySession } from "./study-session";
 import { StudySetup } from "./study-setup";
+import { WordListScreen } from "./word-list";
 
 /**
  * What the user chose to study. `undefined` means not yet studying; otherwise a
@@ -33,6 +34,9 @@ export function DeckStudy() {
   const { cards, folders, front, setFront } = useFlashcards();
   const [target, setTarget] = useState<Target>(undefined);
   const [organizing, setOrganizing] = useState(false);
+  // The collection whose word list is open (a read-only review screen reached
+  // from the dashboard), or undefined when not viewing a list.
+  const [viewing, setViewing] = useState<string | undefined>(undefined);
 
   if (target) {
     let deck: Flashcard[];
@@ -74,12 +78,23 @@ export function DeckStudy() {
     return <DeckOrganize onBack={() => setOrganizing(false)} />;
   }
 
+  if (viewing !== undefined) {
+    return (
+      <WordListScreen
+        title={viewing}
+        cards={selectDeck(cards, viewing)}
+        onBack={() => setViewing(undefined)}
+      />
+    );
+  }
+
   return (
     <StudySetup
       front={front}
       onFrontChange={setFront}
       onStart={setTarget}
       onOrganize={() => setOrganizing(true)}
+      onViewList={setViewing}
     />
   );
 }
