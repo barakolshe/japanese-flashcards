@@ -1191,6 +1191,14 @@ function CardRow({
           >
             {card.japanese}
           </p>
+          {card.pronunciation ? (
+            <p
+              className="truncate text-xs italic text-muted"
+              title={card.pronunciation}
+            >
+              {card.pronunciation}
+            </p>
+          ) : null}
           <p className="truncate text-sm text-muted" title={card.english}>
             {card.english}
           </p>
