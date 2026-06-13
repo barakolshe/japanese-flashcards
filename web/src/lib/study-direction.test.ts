@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  oppositeFront,
   orientationFor,
   revealLabel,
   sideName,
@@ -26,6 +27,19 @@ describe("orientationFor", () => {
       const { front: f, back } = orientationFor(front);
       expect(f).toBe(front);
       expect(back).not.toBe(f);
+    }
+  });
+});
+
+describe("oppositeFront", () => {
+  it("flips to the other leading side", () => {
+    expect(oppositeFront("japanese")).toBe("english");
+    expect(oppositeFront("english")).toBe("japanese");
+  });
+
+  it("returns to the original side when flipped twice", () => {
+    for (const front of ["japanese", "english"] as CardSide[]) {
+      expect(oppositeFront(oppositeFront(front))).toBe(front);
     }
   });
 });
