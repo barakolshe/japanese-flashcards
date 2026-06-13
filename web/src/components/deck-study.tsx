@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
 import { selectDeck, selectDeckByCollections } from "@/lib/study";
-import { orientationFor } from "@/lib/study-direction";
 import { DeckOrganize } from "./deck-organize";
 import { StudySession } from "./study-session";
 import { StudySetup } from "./study-setup";
@@ -68,7 +67,8 @@ export function DeckStudy() {
         }
         deck={deck}
         title={title}
-        orientation={orientationFor(front)}
+        front={front}
+        onFrontChange={setFront}
         onExit={() => setTarget(undefined)}
       />
     );

@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Flashcard } from "@/lib/flashcards";
 import { shuffle, type StudyResult } from "@/lib/study";
 import { useJapaneseSpeech } from "@/lib/speech";
-import { revealLabel, type CardOrientation } from "@/lib/study-direction";
+import {
+  oppositeFront,
+  orientationFor,
+  revealLabel,
+  sideName,
+  type CardFront,
+} from "@/lib/study-direction";
 import { FlipCard } from "./flip-card";
 import { WordListRows } from "./word-list";
 
@@ -13,8 +19,10 @@ type StudySessionProps = {
   deck: Flashcard[];
   /** Human label for what's being studied — a collection or folder name, or "All cards". */
   title: string;
-  /** Which side is the prompt and which is the reveal. */
-  orientation: CardOrientation;
+  /** Which side leads (the prompt). The reveal is the other side. */
+  front: CardFront;
+  /** Flip which side leads mid-session; persisted so it sticks for next time. */
+  onFrontChange: (front: CardFront) => void;
   /** Leave the session and return to the deck setup screen. */
   onExit: () => void;
 };
@@ -22,7 +30,8 @@ type StudySessionProps = {
 export function StudySession({
   deck,
   title,
-  orientation,
+  front,
+  onFrontChange,
   onExit,
 }: StudySessionProps) {
   // `pool` is the set being drilled (the full deck, or the cards missed in a
@@ -37,9 +46,15 @@ export function StudySession({
   const [showList, setShowList] = useState(false);
 
   const cardRef = useRef<HTMLButtonElement | null>(null);
-  const { supported: canSpeak, speaking, toggle: toggleSpeech, stop: stopSpeech } =
-    useJapaneseSpeech();
+  const {
+    supported: canSpeak,
+    speaking,
+    unavailable: speechUnavailable,
+    toggle: toggleSpeech,
+    stop: stopSpeech,
+  } = useJapaneseSpeech();
 
+  const orientation = orientationFor(front);
   const total = order.length;
   const current = order[index];
   const rightCount = useMemo(
@@ -87,6 +102,13 @@ export function StudySession({
     setFlipped(false);
   }
 
+  // Swap which side leads, without disturbing the deck or progress. Land back on
+  // the prompt so the new leading side is what the learner sees.
+  function flipDirection() {
+    onFrontChange(oppositeFront(front));
+    setFlipped(false);
+  }
+
   if (done) {
     const missed = order.filter((card) => results[card.id] === "wrong");
     return (
@@ -119,13 +141,16 @@ export function StudySession({
             Card {index + 1} of {total}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onExit}
-          className="rounded-lg px-2 py-1 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          Back to deck
-        </button>
+        <div className="flex items-center gap-1">
+          <DirectionToggle front={front} onFlip={flipDirection} />
+          <button
+            type="button"
+            onClick={onExit}
+            className="rounded-lg px-2 py-1 text-sm font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            Back to deck
+          </button>
+        </div>
       </header>
 
       <Progress index={index} total={total} />
@@ -145,6 +170,24 @@ export function StudySession({
           speaking={speaking}
         />
       </div>
+
+      {/*
+        The speaker uses the browser's built-in voices. Brave's fingerprinting
+        shield empties or farbles the voice list, and Windows ships no Japanese
+        voice unless its language pack is installed — either way playback is
+        silent. Explain it the moment a tap produces no sound, rather than
+        leaving a dead button.
+      */}
+      {speechUnavailable ? (
+        <p
+          role="status"
+          className="mt-3 text-center text-sm text-muted motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]"
+        >
+          No Japanese voice is available, so playback was silent. In Brave, lower
+          Shields&rsquo; fingerprinting blocking for this site; on Windows,
+          install a Japanese language voice.
+        </p>
+      ) : null}
 
       <div className="mt-5 min-h-12">
         {flipped ? (
@@ -201,6 +244,45 @@ export function StudySession({
         onToggle={() => setShowList((s) => !s)}
       />
     </section>
+  );
+}
+
+/**
+ * Flips the study direction mid-session. The label reads as the current flow
+ * (leading side → reveal side) with the little script glyphs (あ / A), and the
+ * accessible name spells out what tapping does.
+ */
+function DirectionToggle({
+  front,
+  onFlip,
+}: {
+  front: CardFront;
+  onFlip: () => void;
+}) {
+  const lead = front;
+  const reveal = oppositeFront(front);
+  const glyph = (side: CardFront) => (side === "japanese" ? "あ" : "A");
+  return (
+    <button
+      type="button"
+      onClick={onFlip}
+      aria-label={`Show ${sideName(reveal)} first instead`}
+      title="Switch which side shows first"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1 text-sm font-medium text-muted transition-colors hover:border-ink/30 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      <SwapIcon />
+      <span className="inline-flex items-center gap-1">
+        <span aria-hidden className="font-jp leading-none">
+          {glyph(lead)}
+        </span>
+        <span aria-hidden className="text-muted/60">
+          →
+        </span>
+        <span aria-hidden className="font-jp leading-none">
+          {glyph(reveal)}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -383,6 +465,27 @@ function ChevronIcon({ open }: { open: boolean }) {
       className={`transition-transform ${open ? "rotate-180" : ""}`}
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function SwapIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M16 3l4 4-4 4" />
+      <path d="M20 7H4" />
+      <path d="M8 21l-4-4 4-4" />
+      <path d="M4 17h16" />
     </svg>
   );
 }

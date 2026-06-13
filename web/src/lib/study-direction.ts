@@ -36,6 +36,11 @@ export function orientationFor(front: CardFront): CardOrientation {
     : { front: "english", back: "japanese" };
 }
 
+/** The other prompt side — used to flip the study direction. */
+export function oppositeFront(front: CardFront): CardFront {
+  return front === "japanese" ? "english" : "japanese";
+}
+
 /** Human-readable name of a side, for accessible labels. */
 export function sideName(side: CardSide): string {
   return SIDE_NAMES[side];
