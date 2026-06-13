@@ -19,6 +19,8 @@ type StudySetupProps = {
   onStart: (target: StudyTarget) => void;
   /** Open the organize screen to sort cards into collections and folders. */
   onOrganize: () => void;
+  /** Open the read-only word list for a single collection. */
+  onViewList: (collection: string) => void;
 };
 
 const EXPORT_FILENAME = "flashcards.csv";
@@ -45,6 +47,7 @@ export function StudySetup({
   onFrontChange,
   onStart,
   onOrganize,
+  onViewList,
 }: StudySetupProps) {
   const { cards, collections, folders, tags, collectionTags, addCards, clear } =
     useFlashcards();
@@ -271,6 +274,7 @@ export function StudySetup({
                   collections={visible}
                   counts={counts}
                   onStart={onStart}
+                  onViewList={onViewList}
                 />
               ))}
 
@@ -285,6 +289,7 @@ export function StudySetup({
                     collections={visibleUngrouped}
                     counts={counts}
                     onStart={onStart}
+                    onViewList={onViewList}
                   />
                 </div>
               ) : null}
@@ -307,11 +312,13 @@ function FolderGroup({
   collections,
   counts,
   onStart,
+  onViewList,
 }: {
   name: string;
   collections: string[];
   counts: Map<string, number>;
   onStart: (target: StudyTarget) => void;
+  onViewList: (collection: string) => void;
 }) {
   const total = collections.reduce(
     (sum, collection) => sum + (counts.get(collection) ?? 0),
@@ -341,6 +348,7 @@ function FolderGroup({
             collections={collections}
             counts={counts}
             onStart={onStart}
+            onViewList={onViewList}
           />
         </div>
       ) : (
@@ -350,24 +358,30 @@ function FolderGroup({
   );
 }
 
-/** A responsive grid of collection buttons, each starting a single-collection session. */
+/**
+ * A responsive grid of collections. Each row has a primary button that starts a
+ * single-collection session, plus a compact button that opens that collection's
+ * read-only word list.
+ */
 function CollectionGrid({
   collections,
   counts,
   onStart,
+  onViewList,
 }: {
   collections: string[];
   counts: Map<string, number>;
   onStart: (target: StudyTarget) => void;
+  onViewList: (collection: string) => void;
 }) {
   return (
     <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
       {collections.map((collection) => (
-        <li key={collection}>
+        <li key={collection} className="flex items-stretch gap-1.5">
           <button
             type="button"
             onClick={() => onStart({ kind: "collection", name: collection })}
-            className="group flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="group flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <span className="min-w-0 truncate font-medium text-ink">
               {collection}
@@ -375,6 +389,15 @@ function CollectionGrid({
             <span className="shrink-0 rounded-full bg-bg px-2 py-0.5 text-sm text-muted transition-colors group-hover:text-primary">
               {counts.get(collection) ?? 0}
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewList(collection)}
+            aria-label={`Show the word list for ${collection}`}
+            title="Show word list"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-3 text-muted transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <ListIcon />
           </button>
         </li>
       ))}
@@ -605,6 +628,29 @@ function FolderIcon({ className }: { className?: string }) {
       className={className}
     >
       <path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 6h13" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M3 6h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
     </svg>
   );
 }

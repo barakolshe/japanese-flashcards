@@ -6,6 +6,7 @@ import { shuffle, type StudyResult } from "@/lib/study";
 import { useJapaneseSpeech } from "@/lib/speech";
 import { revealLabel, type CardOrientation } from "@/lib/study-direction";
 import { FlipCard } from "./flip-card";
+import { WordListRows } from "./word-list";
 
 type StudySessionProps = {
   /** The cards to study this session (already narrowed to the chosen target). */
@@ -32,6 +33,8 @@ export function StudySession({
   const [flipped, setFlipped] = useState(false);
   const [results, setResults] = useState<Record<string, StudyResult>>({});
   const [done, setDone] = useState(false);
+  // Whether the reference list of this round's words is expanded at the bottom.
+  const [showList, setShowList] = useState(false);
 
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const { supported: canSpeak, speaking, toggle: toggleSpeech, stop: stopSpeech } =
@@ -191,7 +194,46 @@ export function StudySession({
           Shuffle
         </button>
       </footer>
+
+      <WordList
+        cards={pool}
+        open={showList}
+        onToggle={() => setShowList((s) => !s)}
+      />
     </section>
+  );
+}
+
+function WordList({
+  cards,
+  open,
+  onToggle,
+}: {
+  cards: Flashcard[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const listId = "study-word-list";
+  return (
+    <div className="mt-8 border-t border-border pt-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <ChevronIcon open={open} />
+        {open ? "Hide word list" : "Show word list"}
+        <span className="text-muted/60">({cards.length})</span>
+      </button>
+
+      {open ? (
+        <div id={listId} className="mt-3">
+          <WordListRows cards={cards} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -322,6 +364,25 @@ function ArrowLeftIcon() {
     >
       <path d="M19 12H5" />
       <path d="m12 19-7-7 7-7" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
