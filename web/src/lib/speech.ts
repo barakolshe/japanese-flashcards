@@ -89,8 +89,17 @@ function whenVoicesReady(cb: () => void): void {
 export type SpeakHandlers = {
   /** Fires when the browser actually begins speaking. */
   onStart?: () => void;
-  /** Fires once playback finishes, is interrupted, or errors. */
+  /** Fires once playback finishes or is cancelled (a normal stop). */
   onEnd?: () => void;
+  /**
+   * Fires when nothing could actually be heard — the browser exposes the
+   * speech API but has no voice able to read Japanese, or silently drops the
+   * utterance. Distinct from {@link onEnd} so callers can explain the failure
+   * instead of pretending audio played. The common trigger is Brave's
+   * fingerprinting shield (which farbles or empties the voice list) or a
+   * Windows install with no Japanese voice.
+   */
+  onUnavailable?: () => void;
 };
 
 /**
@@ -98,6 +107,13 @@ export type SpeakHandlers = {
  * anything currently playing so rapid taps don't queue up, tags the utterance
  * as `ja-JP`, and prefers a Japanese voice when one is installed. No-op when
  * the API is unavailable.
+ *
+ * When the engine has voices loaded but none can read Japanese, speaking would
+ * be silent or mispronounced, so we report {@link SpeakHandlers.onUnavailable}
+ * rather than fake it. An *empty* voice list is treated differently: some
+ * engines speak fine off `lang` alone with nothing listed, so we still try and
+ * let a watchdog catch a genuinely silent failure (e.g. Brave returning an
+ * empty list and dropping `speak()`).
  */
 export function speakJapanese(text: string, handlers?: SpeakHandlers): void {
   if (!isSpeechSupported()) return;
@@ -107,23 +123,58 @@ export function speakJapanese(text: string, handlers?: SpeakHandlers): void {
   whenVoicesReady(() => {
     synth.cancel();
 
+    const voices = synth.getVoices();
+    const voice = pickJapaneseVoice();
+
+    if (!voice && voices.length > 0) {
+      handlers?.onUnavailable?.();
+      return;
+    }
+
     const utterance = new window.SpeechSynthesisUtterance(text);
     utterance.lang = "ja-JP";
-    const voice = pickJapaneseVoice();
     if (voice) utterance.voice = voice;
 
-    if (handlers?.onStart) utterance.onstart = handlers.onStart;
-    if (handlers?.onEnd) {
-      // `end` covers normal completion; `error` covers cancellation/failure.
-      utterance.onend = handlers.onEnd;
-      utterance.onerror = handlers.onEnd;
-    }
+    // One terminal callback per utterance: `started` distinguishes a real
+    // failure from a normal completion, `settled` keeps the result idempotent.
+    let started = false;
+    let settled = false;
+    const settle = (cb?: () => void) => {
+      if (settled) return;
+      settled = true;
+      cb?.();
+    };
+
+    utterance.onstart = () => {
+      started = true;
+      handlers?.onStart?.();
+    };
+    utterance.onend = () => settle(handlers?.onEnd);
+    utterance.onerror = (event?: { error?: string }) => {
+      // A user/app cancel is a normal stop; any other error before audio
+      // started means nothing was heard and should surface as unavailable.
+      const benign =
+        event?.error === "interrupted" || event?.error === "canceled";
+      settle(!started && !benign ? handlers?.onUnavailable : handlers?.onEnd);
+    };
 
     synth.speak(utterance);
 
     // Chromium quirk: after a `cancel()` the queue can be left paused, which
     // silently swallows the utterance we just queued. Nudge it awake.
     if (synth.paused) synth.resume?.();
+
+    // Watchdog, only when we're speaking blind off `lang` with no voice picked
+    // (an empty list): if playback never starts and the engine isn't busy, the
+    // utterance was silently dropped — report it rather than leave the user in
+    // unexplained silence. With a real voice selected we trust it and rely on
+    // `onerror`, so a slow-to-start network voice isn't flagged by mistake.
+    if (!voice && typeof setTimeout === "function") {
+      setTimeout(() => {
+        if (started || settled) return;
+        if (!synth.speaking && !synth.pending) settle(handlers?.onUnavailable);
+      }, 1500);
+    }
   });
 }
 
@@ -152,6 +203,13 @@ export type JapaneseSpeech = {
   supported: boolean;
   /** True while a word is actively being spoken — drive the UI off this. */
   speaking: boolean;
+  /**
+   * True when the last play attempt produced no audio because the browser has
+   * no usable Japanese voice (e.g. Brave's fingerprinting shield, or no
+   * Japanese voice installed). Lets the UI explain the silence. Cleared on the
+   * next successful play or {@link stop}.
+   */
+  unavailable: boolean;
   /** Speak the word, replacing any current playback. Good for lists of words. */
   speak: (text: string) => void;
   /** Speak the word, or stop it if that same playback is already running. */
@@ -170,6 +228,7 @@ export type JapaneseSpeech = {
 export function useJapaneseSpeech(): JapaneseSpeech {
   const supported = useSpeechAvailable();
   const [speaking, setSpeaking] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
 
   // Warm up the voice list as soon as we can speak, so the first tap finds a
   // Japanese voice instead of an empty list.
@@ -195,13 +254,19 @@ export function useJapaneseSpeech(): JapaneseSpeech {
   const stop = useCallback(() => {
     cancelSpeech();
     setSpeaking(false);
+    setUnavailable(false);
   }, []);
 
   const speak = useCallback((text: string) => {
     if (!isSpeechSupported()) return;
+    setUnavailable(false);
     speakJapanese(text, {
       onStart: () => setSpeaking(true),
       onEnd: () => setSpeaking(false),
+      onUnavailable: () => {
+        setSpeaking(false);
+        setUnavailable(true);
+      },
     });
   }, []);
 
@@ -213,14 +278,19 @@ export function useJapaneseSpeech(): JapaneseSpeech {
       setSpeaking(false);
       return;
     }
+    setUnavailable(false);
     speakJapanese(text, {
       onStart: () => setSpeaking(true),
       onEnd: () => setSpeaking(false),
+      onUnavailable: () => {
+        setSpeaking(false);
+        setUnavailable(true);
+      },
     });
   }, []);
 
   return useMemo(
-    () => ({ supported, speaking, speak, toggle, stop }),
-    [supported, speaking, speak, toggle, stop],
+    () => ({ supported, speaking, unavailable, speak, toggle, stop }),
+    [supported, speaking, unavailable, speak, toggle, stop],
   );
 }

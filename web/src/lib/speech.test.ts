@@ -13,7 +13,7 @@ class FakeUtterance {
   voice: { lang: string; name: string } | null = null;
   onstart: (() => void) | null = null;
   onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event?: { error?: string }) => void) | null = null;
   constructor(text: string) {
     this.text = text;
   }
@@ -53,6 +53,7 @@ function installSpeechApi(
 }
 
 const EN_VOICE: Voice = { lang: "en-US", name: "Samantha" };
+const JA_VOICE: Voice = { lang: "ja-JP", name: "Nanami" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -99,7 +100,7 @@ describe("speakJapanese", () => {
   });
 
   it("cancels any in-flight speech before speaking", () => {
-    const synth = installSpeechApi([EN_VOICE]);
+    const synth = installSpeechApi([JA_VOICE]);
     speakJapanese("猫");
 
     expect(synth.cancel).toHaveBeenCalledOnce();
@@ -107,7 +108,7 @@ describe("speakJapanese", () => {
   });
 
   it("speaks the given text tagged as Japanese", () => {
-    const synth = installSpeechApi([EN_VOICE]);
+    const synth = installSpeechApi([JA_VOICE]);
     speakJapanese("猫");
 
     const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
@@ -133,12 +134,63 @@ describe("speakJapanese", () => {
     expect(utterance.voice).toBe(jaJp);
   });
 
-  it("leaves voice unset when no Japanese voice is installed", () => {
+  it("reports unavailable instead of speaking when voices are loaded but none are Japanese", () => {
     const synth = installSpeechApi([EN_VOICE]);
-    speakJapanese("猫");
+    const onUnavailable = vi.fn();
+    speakJapanese("猫", { onUnavailable });
+
+    // A non-Japanese voice would be silent or mispronounce, so don't fake it.
+    expect(synth.speak).not.toHaveBeenCalled();
+    expect(onUnavailable).toHaveBeenCalledOnce();
+  });
+
+  it("still attempts to speak when the voice list is empty (engine may use lang alone)", () => {
+    const synth = installSpeechApi([]);
+    const onUnavailable = vi.fn();
+    speakJapanese("猫", { onUnavailable });
+    // An empty list defers until voices load; fire the event with it still
+    // empty — some engines speak fine off `lang`, so we try rather than give up.
+    synth.dispatch("voiceschanged");
 
     const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    expect(utterance.lang).toBe("ja-JP");
     expect(utterance.voice).toBeNull();
+    expect(onUnavailable).not.toHaveBeenCalled();
+  });
+
+  it("reports unavailable when an empty-list utterance never starts (watchdog)", () => {
+    vi.useFakeTimers();
+    try {
+      const synth = installSpeechApi([]);
+      const onUnavailable = vi.fn();
+      speakJapanese("猫", { onUnavailable });
+      synth.dispatch("voiceschanged");
+
+      // The engine accepted speak() but it never starts and isn't busy —
+      // a silent drop (e.g. Brave's empty farbled list).
+      expect(onUnavailable).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1500);
+      expect(onUnavailable).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fire the watchdog once playback has started", () => {
+    vi.useFakeTimers();
+    try {
+      const synth = installSpeechApi([]);
+      const onUnavailable = vi.fn();
+      speakJapanese("猫", { onUnavailable });
+      synth.dispatch("voiceschanged");
+
+      const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+      utterance.onstart?.();
+      vi.advanceTimersByTime(1500);
+      expect(onUnavailable).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("waits for voices to load before speaking when none are ready yet", () => {
@@ -178,7 +230,7 @@ describe("speakJapanese", () => {
   });
 
   it("wires start/end handlers so callers can track playback", () => {
-    const synth = installSpeechApi([EN_VOICE]);
+    const synth = installSpeechApi([JA_VOICE]);
     const onStart = vi.fn();
     const onEnd = vi.fn();
     speakJapanese("猫", { onStart, onEnd });
@@ -187,10 +239,45 @@ describe("speakJapanese", () => {
     utterance.onstart?.();
     expect(onStart).toHaveBeenCalledOnce();
 
-    // Both natural end and error should resolve the "speaking" state.
     utterance.onend?.();
-    utterance.onerror?.();
-    expect(onEnd).toHaveBeenCalledTimes(2);
+    expect(onEnd).toHaveBeenCalledOnce();
+  });
+
+  it("treats a cancel/interrupt error as a normal end, not a failure", () => {
+    const synth = installSpeechApi([JA_VOICE]);
+    const onEnd = vi.fn();
+    const onUnavailable = vi.fn();
+    speakJapanese("猫", { onEnd, onUnavailable });
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    utterance.onerror?.({ error: "interrupted" });
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onUnavailable).not.toHaveBeenCalled();
+  });
+
+  it("reports unavailable when synthesis errors before audio starts", () => {
+    const synth = installSpeechApi([JA_VOICE]);
+    const onEnd = vi.fn();
+    const onUnavailable = vi.fn();
+    speakJapanese("猫", { onEnd, onUnavailable });
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    utterance.onerror?.({ error: "synthesis-failed" });
+    expect(onUnavailable).toHaveBeenCalledOnce();
+    expect(onEnd).not.toHaveBeenCalled();
+  });
+
+  it("resolves a terminal event only once", () => {
+    const synth = installSpeechApi([JA_VOICE]);
+    const onEnd = vi.fn();
+    const onUnavailable = vi.fn();
+    speakJapanese("猫", { onEnd, onUnavailable });
+
+    const utterance = synth.speak.mock.calls[0][0] as FakeUtterance;
+    utterance.onend?.();
+    utterance.onerror?.({ error: "synthesis-failed" });
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(onUnavailable).not.toHaveBeenCalled();
   });
 });
 
