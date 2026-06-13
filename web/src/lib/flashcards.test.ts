@@ -103,8 +103,8 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[1]).not.toHaveProperty("pronunciation");
   });
 
-  it("reads pronunciation positionally as the fourth column", () => {
-    const csv = ["猫,cat,Animals,neko"].join("\n");
+  it("reads pronunciation positionally as the third column and collection as the fourth", () => {
+    const csv = ["猫,cat,neko,Animals"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
@@ -113,8 +113,8 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
-      collection: "Animals",
       pronunciation: "neko",
+      collection: "Animals",
     });
   });
 
@@ -190,7 +190,7 @@ describe("parseFlashcardsCsv", () => {
   });
 
   it("reads a file with no header row positionally", () => {
-    const csv = ["猫,cat,Animals", "犬,dog,Animals"].join("\n");
+    const csv = ["猫,cat,neko,Animals", "犬,dog,inu,Animals"].join("\n");
 
     const result = parseFlashcardsCsv(csv);
 
@@ -200,6 +200,7 @@ describe("parseFlashcardsCsv", () => {
     expect(result.cards[0]).toMatchObject({
       japanese: "猫",
       english: "cat",
+      pronunciation: "neko",
       collection: "Animals",
     });
   });
@@ -280,10 +281,10 @@ describe("serializeFlashcardsCsv", () => {
 
     expect(csv).toBe(
       [
-        "japanese,english,collection,pronunciation",
+        "japanese,english,pronunciation,collection",
         // A card with no pronunciation leaves that cell empty.
-        "猫,cat,Animals,",
-        "犬,dog,Animals,inu",
+        "猫,cat,,Animals",
+        "犬,dog,inu,Animals",
       ].join("\n"),
     );
   });
@@ -343,7 +344,7 @@ describe("serializeFlashcardsCsv", () => {
 
   it("produces an empty deck as a header-only file", () => {
     expect(serializeFlashcardsCsv([])).toBe(
-      "japanese,english,collection,pronunciation",
+      "japanese,english,pronunciation,collection",
     );
   });
 });
