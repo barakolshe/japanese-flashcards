@@ -34,8 +34,13 @@ export function StudySession({
   const [done, setDone] = useState(false);
 
   const cardRef = useRef<HTMLButtonElement | null>(null);
-  const { supported: canSpeak, speaking, toggle: toggleSpeech, stop: stopSpeech } =
-    useJapaneseSpeech();
+  const {
+    supported: canSpeak,
+    speaking,
+    unavailable: speechUnavailable,
+    toggle: toggleSpeech,
+    stop: stopSpeech,
+  } = useJapaneseSpeech();
 
   const total = order.length;
   const current = order[index];
@@ -142,6 +147,24 @@ export function StudySession({
           speaking={speaking}
         />
       </div>
+
+      {/*
+        The speaker uses the browser's built-in voices. Brave's fingerprinting
+        shield empties or farbles the voice list, and Windows ships no Japanese
+        voice unless its language pack is installed — either way playback is
+        silent. Explain it the moment a tap produces no sound, rather than
+        leaving a dead button.
+      */}
+      {speechUnavailable ? (
+        <p
+          role="status"
+          className="mt-3 text-center text-sm text-muted motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]"
+        >
+          No Japanese voice is available, so playback was silent. In Brave, lower
+          Shields&rsquo; fingerprinting blocking for this site; on Windows,
+          install a Japanese language voice.
+        </p>
+      ) : null}
 
       <div className="mt-5 min-h-12">
         {flipped ? (
