@@ -159,6 +159,11 @@ export function StudySession({
 
       <div className="mt-5">
         <FlipCard
+          // Remount per card so advancing never animates the flip back to the
+          // prompt: a fresh element mounts already face-up at rotateY(0) with no
+          // transition, instead of spinning 180°→0° and flashing the next card's
+          // answer (the side not meant to be seen yet) mid-rotation.
+          key={current.id}
           japanese={current.japanese}
           english={current.english}
           pronunciation={current.pronunciation}
