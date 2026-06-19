@@ -30,7 +30,7 @@ export function DeckStudy() {
   // Which side leads lives in the store so it's restored alongside the deck and
   // persisted on change — it survives leaving a session and applies to every
   // target, not just the one studied first.
-  const { cards, folders, front, setFront } = useFlashcards();
+  const { cards, folders, front, setFront, recordResults } = useFlashcards();
   const [target, setTarget] = useState<Target>(undefined);
   const [organizing, setOrganizing] = useState(false);
   // The collection whose word list is open (a read-only review screen reached
@@ -69,6 +69,7 @@ export function DeckStudy() {
         title={title}
         front={front}
         onFrontChange={setFront}
+        onRoundComplete={recordResults}
         onExit={() => setTarget(undefined)}
       />
     );

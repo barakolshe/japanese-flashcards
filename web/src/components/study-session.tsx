@@ -23,6 +23,12 @@ type StudySessionProps = {
   front: CardFront;
   /** Flip which side leads mid-session; persisted so it sticks for next time. */
   onFrontChange: (front: CardFront) => void;
+  /**
+   * Record this run's results when the round finishes, so each word's total
+   * successes and current streak are saved. Called once, with the final result
+   * for every card in the round.
+   */
+  onRoundComplete: (results: Record<string, StudyResult>) => void;
   /** Leave the session and return to the deck setup screen. */
   onExit: () => void;
 };
@@ -32,6 +38,7 @@ export function StudySession({
   title,
   front,
   onFrontChange,
+  onRoundComplete,
   onExit,
 }: StudySessionProps) {
   // `pool` is the set being drilled (the full deck, or the cards missed in a
@@ -87,12 +94,17 @@ export function StudySession({
   }
 
   function mark(result: StudyResult) {
-    setResults((prev) => ({ ...prev, [current.id]: result }));
+    const nextResults = { ...results, [current.id]: result };
+    setResults(nextResults);
     if (index + 1 < total) {
       setIndex(index + 1);
       setFlipped(false);
     } else {
       setDone(true);
+      // The round is finished — persist each word's success count and streak.
+      // Using the computed results (not the async state) so the last card's
+      // mark is included.
+      onRoundComplete(nextResults);
     }
   }
 
