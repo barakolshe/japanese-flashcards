@@ -30,15 +30,20 @@ import {
   type Folder,
   type Tag,
 } from "./deck";
+import { applyRoundResults, type CardStats } from "./card-stats";
 import {
+  clearStoredCardStats,
   clearStoredDeck,
+  loadStoredCardStats,
   loadStoredDeck,
   loadStoredFront,
+  saveCardStats,
   saveDeck,
   saveFront,
 } from "./deck-storage";
 import type { Flashcard } from "./flashcards";
 import type { CardFront } from "./study-direction";
+import type { StudyResult } from "./study";
 
 type FlashcardsStore = {
   /**
@@ -93,6 +98,12 @@ type FlashcardsStore = {
   addCollectionTag: (collection: string, name: string, color: string) => DeckResult;
   /** Unpin a tag from a collection; a tag left on no collections disappears. */
   removeCollectionTag: (collection: string, name: string) => void;
+  /**
+   * Fold a completed study run's results into the persisted per-word stats —
+   * each word's total successes and current "in a row" streak. Called once when
+   * a round finishes.
+   */
+  recordResults: (results: Record<string, StudyResult>) => void;
 };
 
 const FlashcardsContext = createContext<FlashcardsStore | null>(null);
@@ -116,22 +127,28 @@ function isEmptyDeck(deck: Deck): boolean {
 export function FlashcardsProvider({ children }: { children: React.ReactNode }) {
   const [deck, setDeck] = useState<Deck>(EMPTY_DECK);
   const [front, setFront] = useState<CardFront>("japanese");
+  // Per-word study stats (total successes and current streak), keyed by card id.
+  const [cardStats, setCardStats] = useState<CardStats>({});
   const [hydrated, setHydrated] = useState(false);
 
-  // Restore the saved deck and study direction once, on the client. Firestore
-  // reads are async, so we resolve both before flipping `hydrated` — the UI
-  // stays on its loading placeholder until the real state is in hand, which
-  // also keeps the direction toggle from flashing its default then correcting.
+  // Restore the saved deck, study direction, and per-word stats once, on the
+  // client. Firestore reads are async, so we resolve all three before flipping
+  // `hydrated` — the UI stays on its loading placeholder until the real state is
+  // in hand, which also keeps the direction toggle from flashing its default
+  // then correcting.
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([loadStoredDeck(), loadStoredFront()]).then(
-      ([storedDeck, storedFront]) => {
-        if (cancelled) return;
-        if (storedDeck) setDeck(storedDeck);
-        if (storedFront) setFront(storedFront);
-        setHydrated(true);
-      },
-    );
+    void Promise.all([
+      loadStoredDeck(),
+      loadStoredFront(),
+      loadStoredCardStats(),
+    ]).then(([storedDeck, storedFront, storedStats]) => {
+      if (cancelled) return;
+      if (storedDeck) setDeck(storedDeck);
+      if (storedFront) setFront(storedFront);
+      setCardStats(storedStats);
+      setHydrated(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -151,14 +168,31 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     void saveFront(front);
   }, [front, hydrated]);
 
-  const loadCards = useCallback(
-    (next: Flashcard[]) => setDeck(deckFromCards(next)),
-    [],
-  );
+  // Persist the per-word stats the same way; an empty map clears the document
+  // rather than leaving an empty one behind (mirrors the deck).
+  useEffect(() => {
+    if (!hydrated) return;
+    if (Object.keys(cardStats).length === 0) void clearStoredCardStats();
+    else void saveCardStats(cardStats);
+  }, [cardStats, hydrated]);
+
+  // A fresh upload replaces the deck with cards that have new ids, so the old
+  // stats no longer apply — start the stats over too.
+  const loadCards = useCallback((next: Flashcard[]) => {
+    setDeck(deckFromCards(next));
+    setCardStats({});
+  }, []);
   const addCards = useCallback((next: Flashcard[]) => {
     setDeck((current) => appendCardsTo(current, next));
   }, []);
-  const clear = useCallback(() => setDeck(EMPTY_DECK), []);
+  const clear = useCallback(() => {
+    setDeck(EMPTY_DECK);
+    setCardStats({});
+  }, []);
+
+  const recordResults = useCallback((results: Record<string, StudyResult>) => {
+    setCardStats((current) => applyRoundResults(current, results));
+  }, []);
 
   // add/rename validate and report back synchronously, so they run against the
   // current deck from this render rather than a functional updater.
@@ -283,6 +317,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       moveCollection,
       addCollectionTag,
       removeCollectionTag,
+      recordResults,
     }),
     [
       hydrated,
@@ -304,6 +339,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       moveCollection,
       addCollectionTag,
       removeCollectionTag,
+      recordResults,
     ],
   );
 
