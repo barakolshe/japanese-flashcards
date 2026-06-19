@@ -10,6 +10,7 @@ import type { Deck } from "./deck";
 
 const DECK_PATH = "flashcards/deck";
 const FRONT_PATH = "flashcards/front";
+const STATS_PATH = "flashcards/stats";
 
 const mocks = vi.hoisted(() => ({
   // Swappable so a single test can make Firestore "fail".
@@ -38,9 +39,12 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 const {
+  clearStoredCardStats,
   clearStoredDeck,
+  loadStoredCardStats,
   loadStoredDeck,
   loadStoredFront,
+  saveCardStats,
   saveDeck,
   saveFront,
 } = await import("./deck-storage");
@@ -257,6 +261,48 @@ describe("saveFront / loadStoredFront", () => {
   });
 });
 
+describe("saveCardStats / loadStoredCardStats", () => {
+  const sampleStats = {
+    "1": { successes: 4, streak: 2 },
+    "2": { successes: 1, streak: 0 },
+  };
+
+  it("round-trips per-word stats through storage", async () => {
+    await saveCardStats(sampleStats);
+    expect(await loadStoredCardStats()).toEqual(sampleStats);
+  });
+
+  it("nests the stats under a `stats` key", async () => {
+    await saveCardStats(sampleStats);
+    expect(mocks.store.get(STATS_PATH)).toEqual({ stats: sampleStats });
+  });
+
+  it("returns an empty map when nothing is stored", async () => {
+    expect(await loadStoredCardStats()).toEqual({});
+  });
+
+  it("returns an empty map for a malformed payload", async () => {
+    mocks.store.set(STATS_PATH, { stats: { "1": { successes: "lots" } } });
+    expect(await loadStoredCardStats()).toEqual({});
+  });
+
+  it("leaves the saved deck and direction untouched", async () => {
+    await saveDeck(sampleDeck);
+    await saveFront("english");
+    await clearStoredCardStats();
+    expect(await loadStoredDeck()).toEqual(sampleDeck);
+    expect(await loadStoredFront()).toBe("english");
+  });
+});
+
+describe("clearStoredCardStats", () => {
+  it("removes saved stats", async () => {
+    await saveCardStats({ "1": { successes: 1, streak: 1 } });
+    await clearStoredCardStats();
+    expect(await loadStoredCardStats()).toEqual({});
+  });
+});
+
 describe("when Firestore is unavailable", () => {
   beforeEach(() => {
     // Simulate a missing config / offline / denied-by-rules situation: every
@@ -266,11 +312,14 @@ describe("when Firestore is unavailable", () => {
     });
   });
 
-  it("loads resolve to null and writes never reject", async () => {
+  it("loads resolve to a safe default and writes never reject", async () => {
     await expect(loadStoredDeck()).resolves.toBeNull();
     await expect(loadStoredFront()).resolves.toBeNull();
+    await expect(loadStoredCardStats()).resolves.toEqual({});
     await expect(saveDeck(sampleDeck)).resolves.toBeUndefined();
     await expect(clearStoredDeck()).resolves.toBeUndefined();
     await expect(saveFront("english")).resolves.toBeUndefined();
+    await expect(saveCardStats({})).resolves.toBeUndefined();
+    await expect(clearStoredCardStats()).resolves.toBeUndefined();
   });
 });

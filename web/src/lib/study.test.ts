@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Flashcard } from "./flashcards";
-import { selectDeck, selectDeckByCollections, shuffle } from "./study";
+import {
+  selectDeck,
+  selectDeckByCollections,
+  shuffle,
+  weightedSampleWithoutReplacement,
+} from "./study";
 
 /** A random source that yields a fixed sequence, looping if exhausted. */
 function sequence(values: number[]): () => number {
@@ -43,6 +48,67 @@ describe("shuffle", () => {
   it("handles empty and single-element arrays", () => {
     expect(shuffle([], sequence([0.5]))).toEqual([]);
     expect(shuffle([42], sequence([0.5]))).toEqual([42]);
+  });
+});
+
+describe("weightedSampleWithoutReplacement", () => {
+  const identity = (x: number) => x;
+
+  it("draws at most `count` distinct items", () => {
+    const out = weightedSampleWithoutReplacement(
+      [1, 2, 3, 4, 5],
+      () => 1,
+      3,
+      sequence([0.1, 0.5, 0.9, 0.3]),
+    );
+    expect(out).toHaveLength(3);
+    expect(new Set(out).size).toBe(3);
+    for (const item of out) expect([1, 2, 3, 4, 5]).toContain(item);
+  });
+
+  it("returns every item when `count` is at least the length", () => {
+    const out = weightedSampleWithoutReplacement(
+      [1, 2, 3],
+      identity,
+      10,
+      sequence([0.5, 0.2, 0.8]),
+    );
+    expect([...out].sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it("returns an empty array for an empty input", () => {
+    expect(
+      weightedSampleWithoutReplacement([], identity, 5, sequence([0.5])),
+    ).toEqual([]);
+  });
+
+  it("favours heavier items given the same random draw", () => {
+    // Weights [1, 2, 3] span cumulative ranges [0,1), [1,3), [3,6) over total 6.
+    // random()*6 lands the threshold in the chosen item's range.
+    expect(
+      weightedSampleWithoutReplacement([1, 2, 3], identity, 1, sequence([0.9])),
+    ).toEqual([3]); // 0.9*6 = 5.4 → falls in 3's range
+    expect(
+      weightedSampleWithoutReplacement([1, 2, 3], identity, 1, sequence([0.05])),
+    ).toEqual([1]); // 0.05*6 = 0.3 → falls in 1's range
+  });
+
+  it("falls back to a uniform pick when every weight is zero", () => {
+    const out = weightedSampleWithoutReplacement(
+      [1, 2, 3],
+      () => 0,
+      2,
+      sequence([0.5, 0.5]),
+    );
+    expect(out).toHaveLength(2);
+    expect(new Set(out).size).toBe(2);
+  });
+
+  it("does not mutate the input array", () => {
+    const input = [1, 2, 3];
+    const copy = [...input];
+    weightedSampleWithoutReplacement(input, identity, 2, sequence([0.5]));
+    expect(input).toEqual(copy);
   });
 });
 

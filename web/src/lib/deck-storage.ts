@@ -1,4 +1,5 @@
 import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import type { CardStat, CardStats } from "./card-stats";
 import type { Deck, Folder, Tag } from "./deck";
 import { getDb } from "./firebase";
 import type { Flashcard } from "./flashcards";
@@ -26,6 +27,7 @@ const STORAGE_VERSION = 2;
 const COLLECTION = "flashcards";
 const DECK_DOC = "deck";
 const FRONT_DOC = "front";
+const STATS_DOC = "stats";
 
 function deckRef() {
   return doc(getDb(), COLLECTION, DECK_DOC);
@@ -33,6 +35,10 @@ function deckRef() {
 
 function frontRef() {
   return doc(getDb(), COLLECTION, FRONT_DOC);
+}
+
+function statsRef() {
+  return doc(getDb(), COLLECTION, STATS_DOC);
 }
 
 function isFlashcard(value: unknown): value is Flashcard {
@@ -218,5 +224,53 @@ export async function saveFront(front: CardFront): Promise<void> {
     await setDoc(frontRef(), { front });
   } catch {
     // The preference just won't stick; not worth interrupting the user.
+  }
+}
+
+function isCardStat(value: unknown): value is CardStat {
+  if (typeof value !== "object" || value === null) return false;
+  const stat = value as Record<string, unknown>;
+  return typeof stat.successes === "number" && typeof stat.streak === "number";
+}
+
+function isCardStats(value: unknown): value is CardStats {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(isCardStat);
+}
+
+/**
+ * Read the saved per-word stats, or an empty map if nothing valid is stored.
+ * Resolves to `{}` (never rejects) on a missing document, a shape that no longer
+ * matches, or a network/permission error — the caller just starts fresh.
+ */
+export async function loadStoredCardStats(): Promise<CardStats> {
+  let value: unknown;
+  try {
+    const snap = await getDoc(statsRef());
+    if (!snap.exists()) return {};
+    value = snap.data().stats;
+  } catch {
+    return {};
+  }
+  return isCardStats(value) ? value : {};
+}
+
+/** Persist the per-word stats, silently ignoring write errors (offline, rules). */
+export async function saveCardStats(stats: CardStats): Promise<void> {
+  try {
+    await setDoc(statsRef(), { stats });
+  } catch {
+    // The stats just won't stick this time; not worth interrupting study.
+  }
+}
+
+/** Forget all saved per-word stats (used when clearing the deck). */
+export async function clearStoredCardStats(): Promise<void> {
+  try {
+    await deleteDoc(statsRef());
+  } catch {
+    // Ignore — there's nothing the user can do about a failed delete.
   }
 }
