@@ -3,6 +3,8 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { serializeFlashcardsCsv, type Flashcard } from "@/lib/flashcards";
 import { useFlashcards } from "@/lib/flashcards-store";
+import { selectQuizDeck } from "@/lib/card-stats";
+import { selectDeckByCollections } from "@/lib/study";
 import { useCsvImport } from "@/lib/use-csv-import";
 import type { CardFront } from "@/lib/study-direction";
 import type { Tag } from "@/lib/deck";
@@ -24,6 +26,9 @@ type StudySetupProps = {
 };
 
 const EXPORT_FILENAME = "flashcards.csv";
+
+/** How many words a quiz draws from the (filtered) deck. */
+const QUIZ_SIZE = 50;
 
 /**
  * Download the deck as a CSV file. A leading BOM keeps the Japanese readable
@@ -49,11 +54,14 @@ export function StudySetup({
   onOrganize,
   onViewList,
 }: StudySetupProps) {
-  const { cards, collections, folders, tags, collectionTags, addCards, clear } =
+  const { cards, collections, folders, tags, collectionTags, stats, addCards, clear } =
     useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const importer = useCsvImport(addCards);
+  // Bumped on every quiz start so each draw gets a fresh session key, even when
+  // the same cards happen to be sampled again (e.g. a deck of under 50 words).
+  const quizNonce = useRef(0);
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -118,6 +126,25 @@ export function StudySetup({
         : [...prev, name],
     );
   const clearTags = () => setSelectedTags([]);
+
+  // The quiz draws from whatever's currently in view: the tag-matching
+  // collections while filtering, otherwise the whole deck. The draw itself is
+  // streak-weighted and happens on click (not here) so it samples the live
+  // stats and never re-runs on an unrelated re-render.
+  const quizPool = isFiltering
+    ? selectDeckByCollections(cards, visibleCollections)
+    : cards;
+  const quizCount = Math.min(QUIZ_SIZE, quizPool.length);
+
+  const startQuiz = () => {
+    quizNonce.current += 1;
+    onStart({
+      kind: "quiz",
+      cards: selectQuizDeck(quizPool, stats, QUIZ_SIZE, Math.random),
+      title: isFiltering ? `Quiz · ${selectedTags.join(", ")}` : "Quiz",
+      nonce: quizNonce.current,
+    });
+  };
 
   return (
     <div className="w-full motion-safe:animate-[rise_0.24s_var(--ease-out-quart)]">
@@ -217,6 +244,25 @@ export function StudySetup({
       >
         Study all {cards.length} cards
       </button>
+
+      <button
+        type="button"
+        onClick={startQuiz}
+        disabled={quizCount === 0}
+        className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-5 py-3.5 text-left font-semibold text-primary transition-colors hover:bg-primary/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-60"
+      >
+        <span className="inline-flex items-center gap-2">
+          <TargetIcon />
+          Quiz
+        </span>
+        <span className="shrink-0 text-sm font-medium text-primary/80">
+          {quizCount} word{quizCount === 1 ? "" : "s"}
+          {isFiltering ? " · matching" : ""}
+        </span>
+      </button>
+      <p className="mt-2 text-sm text-muted">
+        A streak-weighted draw — weaker words show up more often.
+      </p>
 
       {hasFocusOptions ? (
         <div className="mt-8 space-y-6">
@@ -609,6 +655,26 @@ function SpinnerIcon() {
       className="motion-safe:animate-spin"
     >
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
+function TargetIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
     </svg>
   );
 }
