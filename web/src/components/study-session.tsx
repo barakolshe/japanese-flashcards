@@ -179,6 +179,7 @@ export function StudySession({
           japanese={current.japanese}
           english={current.english}
           pronunciation={current.pronunciation}
+          sentence={current.sentence}
           orientation={orientation}
           flipped={flipped}
           onFlip={() => setFlipped((f) => !f)}
