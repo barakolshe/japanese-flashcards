@@ -33,6 +33,20 @@ describe("createCard", () => {
       "pronunciation",
     );
   });
+
+  it("keeps a trimmed sentence when one is given", () => {
+    const card = createCard("猫", "cat", "Animals", "neko", " 猫がいます。 ");
+    expect(card.sentence).toBe("猫がいます。");
+  });
+
+  it("omits the sentence key when absent or blank", () => {
+    expect(createCard("猫", "cat", "Animals", "neko")).not.toHaveProperty(
+      "sentence",
+    );
+    expect(createCard("猫", "cat", "Animals", "neko", "  ")).not.toHaveProperty(
+      "sentence",
+    );
+  });
 });
 
 describe("parseFlashcardsCsv", () => {
