@@ -16,6 +16,12 @@ export type Flashcard = {
    * pronunciation column blank, in which case the key is omitted entirely.
    */
   pronunciation?: string;
+  /**
+   * A very basic Japanese example sentence using the word, shown below it on
+   * the card. Optional — sentences are filled in per card (not carried by the
+   * CSV), and the key is omitted entirely when there is none.
+   */
+  sentence?: string;
 };
 
 /** Collection assigned to a card when the CSV leaves the collection column blank. */
@@ -51,12 +57,15 @@ export function createCard(
   english: string,
   collection: string,
   pronunciation?: string,
+  sentence?: string,
 ): Flashcard {
   const card: Flashcard = { id: newId(), japanese, english, collection };
-  // Omit the key entirely when there's no pronunciation: Firestore rejects
+  // Omit the keys entirely when there's no value: Firestore rejects
   // `undefined` field values, so the card shape must stay sparse.
   const reading = pronunciation?.trim();
   if (reading) card.pronunciation = reading;
+  const example = sentence?.trim();
+  if (example) card.sentence = example;
   return card;
 }
 

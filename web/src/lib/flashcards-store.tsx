@@ -64,6 +64,11 @@ type FlashcardsStore = {
   collectionTags: Record<string, string[]>;
   /** Which side cards show first; persisted alongside the deck. */
   front: CardFront;
+  /**
+   * Per-word study stats (total successes and current streak), keyed by card
+   * id. Drives the streak-weighted quiz selection on the study screen.
+   */
+  stats: CardStats;
   /** Change which side leads, persisting the choice. */
   setFront: (front: CardFront) => void;
   /** Replace the current deck with a freshly parsed set of cards. */
@@ -300,6 +305,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       tags: deck.tags,
       collectionTags: deck.collectionTags,
       front,
+      stats: cardStats,
       setFront,
       loadCards,
       addCards,
@@ -323,6 +329,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       hydrated,
       deck,
       front,
+      cardStats,
       loadCards,
       addCards,
       clear,

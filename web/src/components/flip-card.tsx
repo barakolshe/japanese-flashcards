@@ -15,6 +15,11 @@ type FlipCardProps = {
    * Japanese side reveals it above the word; omitted cards show no eye control.
    */
   pronunciation?: string;
+  /**
+   * A basic Japanese example sentence using the word, always visible below it
+   * on the Japanese side. Omitted cards show nothing.
+   */
+  sentence?: string;
   /** Which side is the prompt (front) and which is the reveal (back). */
   orientation: CardOrientation;
   /** Whether the back (answer) is showing. */
@@ -43,6 +48,7 @@ export function FlipCard({
   japanese,
   english,
   pronunciation,
+  sentence,
   orientation,
   flipped,
   onFlip,
@@ -87,6 +93,7 @@ export function FlipCard({
           japanese={japanese}
           english={english}
           pronunciation={pronunciation}
+          sentence={sentence}
           showPronunciation={showPronunciation}
         />
 
@@ -97,6 +104,7 @@ export function FlipCard({
           japanese={japanese}
           english={english}
           pronunciation={pronunciation}
+          sentence={sentence}
           showPronunciation={showPronunciation}
         />
       </button>
@@ -215,6 +223,7 @@ function CardFace({
   japanese,
   english,
   pronunciation,
+  sentence,
   showPronunciation,
 }: {
   position: "front" | "back";
@@ -222,6 +231,7 @@ function CardFace({
   japanese: string;
   english: string;
   pronunciation?: string;
+  sentence?: string;
   showPronunciation: boolean;
 }) {
   const isFront = position === "front";
@@ -257,6 +267,15 @@ function CardFace({
             >
               {japanese}
             </span>
+            {/* The example sentence stays visible — it's context, not an answer. */}
+            {sentence ? (
+              <span
+                lang="ja"
+                className="font-jp text-balance text-center text-lg leading-relaxed text-muted sm:text-xl"
+              >
+                {sentence}
+              </span>
+            ) : null}
           </>
         ) : (
           <span className="text-balance text-center text-3xl font-semibold leading-snug text-ink sm:text-4xl">

@@ -14,12 +14,18 @@ import { WordListScreen } from "./word-list";
  * whole deck, a single collection, a whole folder (all its collections), or an
  * explicit set of collections (used by the tag filter — "study everything
  * shown") with a title to label the session.
+ *
+ * `quiz` is special: rather than a descriptor resolved here, it carries an
+ * already-sampled set of cards (the streak-weighted 50-word draw, picked at the
+ * moment the button is clicked) plus a `nonce` so each click starts a fresh
+ * session even when the same cards happen to be drawn again.
  */
 export type StudyTarget =
   | { kind: "all" }
   | { kind: "collection"; name: string }
   | { kind: "folder"; name: string }
-  | { kind: "collections"; names: string[]; title: string };
+  | { kind: "collections"; names: string[]; title: string }
+  | { kind: "quiz"; cards: Flashcard[]; title: string; nonce: number };
 type Target = StudyTarget | undefined;
 
 /**
@@ -43,6 +49,9 @@ export function DeckStudy() {
     if (target.kind === "all") {
       deck = selectDeck(cards, null);
       title = "All cards";
+    } else if (target.kind === "quiz") {
+      deck = target.cards;
+      title = target.title;
     } else if (target.kind === "collection") {
       deck = selectDeck(cards, target.name);
       title = target.name;
@@ -61,9 +70,11 @@ export function DeckStudy() {
         key={
           target.kind === "all"
             ? "all"
-            : target.kind === "collections"
-              ? `collections:${target.title}:${target.names.join(",")}`
-              : `${target.kind}:${target.name}`
+            : target.kind === "quiz"
+              ? `quiz:${target.nonce}`
+              : target.kind === "collections"
+                ? `collections:${target.title}:${target.names.join(",")}`
+                : `${target.kind}:${target.name}`
         }
         deck={deck}
         title={title}
