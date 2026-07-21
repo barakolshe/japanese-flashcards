@@ -132,6 +132,38 @@ describe("parseFlashcardsCsv", () => {
     });
   });
 
+  it("reads a sentence column when the header names one", () => {
+    const csv = [
+      "japanese,english,collection,sentence",
+      "猫,cat,Animals,猫がいます。",
+      "犬,dog,Animals,",
+    ].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards[0].sentence).toBe("猫がいます。");
+    // A blank sentence cell leaves the key off rather than storing "".
+    expect(result.cards[1]).not.toHaveProperty("sentence");
+  });
+
+  it("reads the sentence positionally as the fifth column", () => {
+    const csv = ["猫,cat,neko,Animals,猫がいます。"].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards[0]).toMatchObject({
+      japanese: "猫",
+      english: "cat",
+      pronunciation: "neko",
+      collection: "Animals",
+      sentence: "猫がいます。",
+    });
+  });
+
   it("works without a collection column at all", () => {
     const csv = ["japanese,english", "猫,cat"].join("\n");
 
@@ -290,15 +322,16 @@ describe("serializeFlashcardsCsv", () => {
         english: "dog",
         collection: "Animals",
         pronunciation: "inu",
+        sentence: "犬がいます。",
       },
     ]);
 
     expect(csv).toBe(
       [
-        "japanese,english,pronunciation,collection",
-        // A card with no pronunciation leaves that cell empty.
-        "猫,cat,,Animals",
-        "犬,dog,inu,Animals",
+        "japanese,english,pronunciation,collection,sentence",
+        // A card with no pronunciation or sentence leaves those cells empty.
+        "猫,cat,,Animals,",
+        "犬,dog,inu,Animals,犬がいます。",
       ].join("\n"),
     );
   });
@@ -324,6 +357,7 @@ describe("serializeFlashcardsCsv", () => {
         english: "cat",
         collection: "Animals",
         pronunciation: "neko",
+        sentence: "猫がいます。",
       },
       {
         id: "2",
@@ -340,25 +374,29 @@ describe("serializeFlashcardsCsv", () => {
     if (!result.ok) return;
     expect(result.skipped).toEqual([]);
     expect(
-      result.cards.map(({ japanese, english, collection, pronunciation }) => ({
-        japanese,
-        english,
-        collection,
-        pronunciation,
-      })),
+      result.cards.map(
+        ({ japanese, english, collection, pronunciation, sentence }) => ({
+          japanese,
+          english,
+          collection,
+          pronunciation,
+          sentence,
+        }),
+      ),
     ).toEqual(
-      cards.map(({ japanese, english, collection, pronunciation }) => ({
+      cards.map(({ japanese, english, collection, pronunciation, sentence }) => ({
         japanese,
         english,
         collection,
         pronunciation,
+        sentence,
       })),
     );
   });
 
   it("produces an empty deck as a header-only file", () => {
     expect(serializeFlashcardsCsv([])).toBe(
-      "japanese,english,pronunciation,collection",
+      "japanese,english,pronunciation,collection,sentence",
     );
   });
 });

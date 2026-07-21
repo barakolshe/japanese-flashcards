@@ -29,7 +29,7 @@ export const DEFAULT_COLLECTION = "Uncategorized";
 
 /** Column headers the uploader recognizes (matched case-insensitively). */
 export const REQUIRED_COLUMNS = ["japanese", "english"] as const;
-export const OPTIONAL_COLUMNS = ["pronunciation", "collection"] as const;
+export const OPTIONAL_COLUMNS = ["pronunciation", "collection", "sentence"] as const;
 
 /** A row that could not be turned into a card, with a human-readable reason. */
 export type SkippedRow = {
@@ -77,6 +77,8 @@ type ColumnLayout = {
   collection: number;
   /** -1 when there is no pronunciation column. */
   pronunciation: number;
+  /** -1 when there is no sentence column. */
+  sentence: number;
   /** Rows that hold card data (the header row is excluded when present). */
   dataRows: string[][];
   /** 1-based source line of the first data row (2 with a header, 1 without). */
@@ -88,7 +90,7 @@ type ColumnLayout = {
  * and `english` (case-insensitively, in any order) is treated as a header and
  * the columns are located by name. Otherwise the file is taken to have no
  * header and columns are read positionally as japanese, english, pronunciation,
- * collection.
+ * collection, sentence.
  */
 function resolveLayout(rows: string[][]): ColumnLayout {
   const header = rows[0].map((cell) => cell.trim().toLowerCase());
@@ -100,6 +102,7 @@ function resolveLayout(rows: string[][]): ColumnLayout {
       english: header.indexOf("english"),
       collection: header.indexOf("collection"),
       pronunciation: header.indexOf("pronunciation"),
+      sentence: header.indexOf("sentence"),
       dataRows: rows.slice(1),
       firstDataLine: 2,
     };
@@ -110,6 +113,7 @@ function resolveLayout(rows: string[][]): ColumnLayout {
     english: 1,
     pronunciation: 2,
     collection: 3,
+    sentence: 4,
     dataRows: rows,
     firstDataLine: 1,
   };
@@ -121,11 +125,13 @@ function resolveLayout(rows: string[][]): ColumnLayout {
  * The file may start with a header row naming the columns `japanese`,
  * `english`, and (optionally) `collection` — matched case-insensitively and in
  * any order — or it may have no header at all, in which case columns are read
- * positionally as japanese, english, pronunciation, collection. Rows missing a Japanese or
- * English value are skipped and reported; a blank/absent collection falls back
- * to {@link DEFAULT_COLLECTION}. An optional `pronunciation` column (read third
- * when there is no header) carries an English reading of the Japanese word; it's
- * left off the card when blank or absent.
+ * positionally as japanese, english, pronunciation, collection, sentence. Rows
+ * missing a Japanese or English value are skipped and reported; a blank/absent
+ * collection falls back to {@link DEFAULT_COLLECTION}. An optional
+ * `pronunciation` column (read third when there is no header) carries an
+ * English reading of the Japanese word, and an optional `sentence` column (read
+ * fifth) carries a basic Japanese example sentence; each is left off the card
+ * when blank or absent.
  */
 export function parseFlashcardsCsv(text: string): ParseResult {
   const parsed = Papa.parse<string[]>(text, {
@@ -153,6 +159,9 @@ export function parseFlashcardsCsv(text: string): ParseResult {
     const pronunciation = (
       layout.pronunciation >= 0 ? row[layout.pronunciation] ?? "" : ""
     ).trim();
+    const sentence = (
+      layout.sentence >= 0 ? row[layout.sentence] ?? "" : ""
+    ).trim();
 
     const missingFields: string[] = [];
     if (!japanese) missingFields.push("Japanese");
@@ -168,6 +177,7 @@ export function parseFlashcardsCsv(text: string): ParseResult {
 
     const card: Flashcard = { id: newId(), japanese, english, collection };
     if (pronunciation) card.pronunciation = pronunciation;
+    if (sentence) card.sentence = sentence;
     cards.push(card);
   });
 
@@ -186,10 +196,11 @@ export function parseFlashcardsCsv(text: string): ParseResult {
 
 /**
  * Serialize flashcards back into CSV text that {@link parseFlashcardsCsv} can
- * read again. Emits a `japanese,english,pronunciation,collection` header
- * followed by one row per card, so a deck round-trips through export and
- * re-upload unchanged. Cards without a pronunciation write an empty cell in that
- * column. Papa handles quoting of values containing commas, quotes, or newlines.
+ * read again. Emits a `japanese,english,pronunciation,collection,sentence`
+ * header followed by one row per card, so a deck round-trips through export and
+ * re-upload unchanged. Cards without a pronunciation or sentence write an empty
+ * cell in that column. Papa handles quoting of values containing commas, quotes,
+ * or newlines.
  */
 export function serializeFlashcardsCsv(cards: Flashcard[]): string {
   const fields = [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS];
@@ -204,6 +215,7 @@ export function serializeFlashcardsCsv(cards: Flashcard[]): string {
         card.english,
         card.pronunciation ?? "",
         card.collection,
+        card.sentence ?? "",
       ]),
     },
     { newline: "\n" },
