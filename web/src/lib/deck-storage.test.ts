@@ -165,6 +165,43 @@ describe("loadStoredDeck validation", () => {
     expect(await loadStoredDeck()).toBeNull();
   });
 
+  it("loads a deck whose cards carry an optional example sentence", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          {
+            id: "1",
+            japanese: "猫",
+            english: "cat",
+            collection: "Animals",
+            sentence: "猫がいます。",
+          },
+        ],
+        collections: ["Animals"],
+        folders: [],
+        tags: [],
+        collectionTags: {},
+      },
+    });
+    const deck = await loadStoredDeck();
+    expect(deck?.cards[0].sentence).toBe("猫がいます。");
+  });
+
+  it("discards a deck whose card sentence isn't a string", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          { id: "1", japanese: "猫", english: "cat", collection: "Animals", sentence: 5 },
+        ],
+        collections: ["Animals"],
+        folders: [],
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
   it("discards a deck whose tags are malformed", async () => {
     mocks.store.set(DECK_PATH, {
       version: 2,

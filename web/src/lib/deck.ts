@@ -247,7 +247,13 @@ export function duplicateCollection(deck: Deck, name: string): DuplicateResult {
   const copies = deck.cards
     .filter((card) => card.collection === name)
     .map((card) =>
-      createCard(card.japanese, card.english, newName, card.pronunciation),
+      createCard(
+        card.japanese,
+        card.english,
+        newName,
+        card.pronunciation,
+        card.sentence,
+      ),
     );
 
   const collections = [...deck.collections];

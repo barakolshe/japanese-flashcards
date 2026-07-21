@@ -328,6 +328,27 @@ describe("duplicateCollection", () => {
     expect(copy?.pronunciation).toBe("neko");
   });
 
+  it("carries each card's example sentence onto the copy", () => {
+    const deck = mk(
+      [
+        {
+          id: "1",
+          japanese: "猫",
+          english: "cat",
+          collection: "Animals",
+          sentence: "猫がいます。",
+        },
+      ],
+      ["Animals"],
+      [],
+    );
+    const result = duplicateCollection(deck, "Animals");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = result.deck.cards.find((c) => c.collection === "Animals copy");
+    expect(copy?.sentence).toBe("猫がいます。");
+  });
+
   it("files the copy in the same folder as the source, right after it", () => {
     const deck = mk([card("1", "Animals")], ["Animals"], [
       { name: "Nature", collections: ["Animals"] },
