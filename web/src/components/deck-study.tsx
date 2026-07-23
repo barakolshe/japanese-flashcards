@@ -16,7 +16,7 @@ import { WordListScreen } from "./word-list";
  * shown") with a title to label the session.
  *
  * `quiz` is special: rather than a descriptor resolved here, it carries an
- * already-sampled set of cards (the streak-weighted 50-word draw, picked at the
+ * already-sampled set of cards (the streak-weighted quiz draw, picked at the
  * moment the button is clicked) plus a `nonce` so each click starts a fresh
  * session even when the same cards happen to be drawn again.
  */
