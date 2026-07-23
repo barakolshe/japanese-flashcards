@@ -180,6 +180,7 @@ export function StudySession({
           english={current.english}
           pronunciation={current.pronunciation}
           sentence={current.sentence}
+          sentenceTranslation={current.sentenceTranslation}
           orientation={orientation}
           flipped={flipped}
           onFlip={() => setFlipped((f) => !f)}

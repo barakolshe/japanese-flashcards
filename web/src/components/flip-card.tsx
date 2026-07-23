@@ -20,6 +20,11 @@ type FlipCardProps = {
    * on the Japanese side. Omitted cards show nothing.
    */
   sentence?: string;
+  /**
+   * An English translation of the example sentence. When present, the eye
+   * toggle reveals it below the sentence (alongside the pronunciation reveal).
+   */
+  sentenceTranslation?: string;
   /** Which side is the prompt (front) and which is the reveal (back). */
   orientation: CardOrientation;
   /** Whether the back (answer) is showing. */
@@ -49,6 +54,7 @@ export function FlipCard({
   english,
   pronunciation,
   sentence,
+  sentenceTranslation,
   orientation,
   flipped,
   onFlip,
@@ -63,12 +69,22 @@ export function FlipCard({
   // learner reverses the study direction. The eye toggle rides along with it.
   const japaneseFaceUp = (flipped ? orientation.back : orientation.front) === "japanese";
 
-  const hasPronunciation = Boolean(pronunciation);
-  const [showPronunciation, setShowPronunciation] = useState(false);
+  // The eye reveals every hidden hint at once: the pronunciation above the
+  // word and the sentence's translation below it. It shows whenever the card
+  // has at least one of those to reveal.
+  const hasTranslation = Boolean(sentence && sentenceTranslation);
+  const hasHints = Boolean(pronunciation) || hasTranslation;
+  const hintNames = [
+    pronunciation ? "pronunciation" : null,
+    hasTranslation ? "translation" : null,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  const [showHints, setShowHints] = useState(false);
   // Reset the reveal when the card changes so the next word starts hidden. The
   // Japanese text is a reliable per-card key here (cards advance one at a time).
   useEffect(() => {
-    setShowPronunciation(false);
+    setShowHints(false);
   }, [japanese]);
 
   return (
@@ -94,7 +110,8 @@ export function FlipCard({
           english={english}
           pronunciation={pronunciation}
           sentence={sentence}
-          showPronunciation={showPronunciation}
+          sentenceTranslation={sentenceTranslation}
+          showHints={showHints}
         />
 
         {/* Back — the answer, primary-tinted and pre-rotated so it reads right. */}
@@ -105,7 +122,8 @@ export function FlipCard({
           english={english}
           pronunciation={pronunciation}
           sentence={sentence}
-          showPronunciation={showPronunciation}
+          sentenceTranslation={sentenceTranslation}
+          showHints={showHints}
         />
       </button>
 
@@ -116,25 +134,25 @@ export function FlipCard({
         face showing isn't the Japanese one, rather than popping in and out. Both
         act on the Japanese word, so they belong only on its side.
       */}
-      {hasPronunciation || onSpeak ? (
+      {hasHints || onSpeak ? (
         <div
           aria-hidden={!japaneseFaceUp}
           className="absolute right-3 top-3 z-10 flex items-center gap-2 transition-opacity duration-200 ease-[var(--ease-out-quart)] aria-hidden:pointer-events-none aria-hidden:opacity-0"
         >
-          {hasPronunciation ? (
+          {hasHints ? (
             <button
               type="button"
-              onClick={() => setShowPronunciation((shown) => !shown)}
+              onClick={() => setShowHints((shown) => !shown)}
               tabIndex={japaneseFaceUp ? 0 : -1}
-              aria-pressed={showPronunciation}
+              aria-pressed={showHints}
               aria-label={
-                showPronunciation ? "Hide pronunciation" : "Show pronunciation"
+                showHints ? `Hide ${hintNames}` : `Show ${hintNames}`
               }
-              title={showPronunciation ? "Hide pronunciation" : "Show pronunciation"}
-              data-active={showPronunciation}
+              title={showHints ? `Hide ${hintNames}` : `Show ${hintNames}`}
+              data-active={showHints}
               className="inline-flex size-11 items-center justify-center rounded-full border border-border bg-bg text-muted transition-[color,background-color,border-color,transform] duration-200 ease-[var(--ease-out-quart)] hover:border-primary/40 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary active:scale-95 data-[active=true]:border-transparent data-[active=true]:bg-primary data-[active=true]:text-bg"
             >
-              <EyeIcon open={showPronunciation} />
+              <EyeIcon open={showHints} />
             </button>
           ) : null}
 
@@ -224,7 +242,8 @@ function CardFace({
   english,
   pronunciation,
   sentence,
-  showPronunciation,
+  sentenceTranslation,
+  showHints,
 }: {
   position: "front" | "back";
   side: CardSide;
@@ -232,7 +251,8 @@ function CardFace({
   english: string;
   pronunciation?: string;
   sentence?: string;
-  showPronunciation: boolean;
+  sentenceTranslation?: string;
+  showHints: boolean;
 }) {
   const isFront = position === "front";
   const isJapanese = side === "japanese";
@@ -243,8 +263,11 @@ function CardFace({
   const label = isJapanese ? "Japanese" : "Meaning";
   const hint = isFront ? "Tap or press Space to flip" : "Tap to flip back";
   // The reading sits above the Japanese word, and only there — it's a hint for
-  // saying that word, meaningless on the meaning side.
-  const reading = isJapanese && showPronunciation ? pronunciation : undefined;
+  // saying that word, meaningless on the meaning side. The sentence translation
+  // rides the same reveal, below the sentence it translates.
+  const reading = isJapanese && showHints ? pronunciation : undefined;
+  const translation =
+    isJapanese && showHints && sentence ? sentenceTranslation : undefined;
 
   return (
     <div
@@ -274,6 +297,11 @@ function CardFace({
                 className="font-jp text-balance text-center text-lg leading-relaxed text-muted sm:text-xl"
               >
                 {sentence}
+              </span>
+            ) : null}
+            {translation ? (
+              <span className="text-balance text-center text-base font-medium text-primary sm:text-lg">
+                {translation}
               </span>
             ) : null}
           </>

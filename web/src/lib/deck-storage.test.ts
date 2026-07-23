@@ -188,6 +188,50 @@ describe("loadStoredDeck validation", () => {
     expect(deck?.cards[0].sentence).toBe("猫がいます。");
   });
 
+  it("loads a deck whose cards carry an optional sentence translation", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          {
+            id: "1",
+            japanese: "猫",
+            english: "cat",
+            collection: "Animals",
+            sentence: "猫がいます。",
+            sentenceTranslation: "There is a cat.",
+          },
+        ],
+        collections: ["Animals"],
+        folders: [],
+        tags: [],
+        collectionTags: {},
+      },
+    });
+    const deck = await loadStoredDeck();
+    expect(deck?.cards[0].sentenceTranslation).toBe("There is a cat.");
+  });
+
+  it("discards a deck whose card sentence translation isn't a string", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          {
+            id: "1",
+            japanese: "猫",
+            english: "cat",
+            collection: "Animals",
+            sentenceTranslation: 5,
+          },
+        ],
+        collections: ["Animals"],
+        folders: [],
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
+  });
+
   it("discards a deck whose card sentence isn't a string", async () => {
     mocks.store.set(DECK_PATH, {
       version: 2,
