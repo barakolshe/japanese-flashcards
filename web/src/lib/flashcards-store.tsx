@@ -37,9 +37,11 @@ import {
   loadStoredCardStats,
   loadStoredDeck,
   loadStoredFront,
+  loadStoredQuizFront,
   saveCardStats,
   saveDeck,
   saveFront,
+  saveQuizFront,
 } from "./deck-storage";
 import type { Flashcard } from "./flashcards";
 import type { CardFront } from "./study-direction";
@@ -65,12 +67,20 @@ type FlashcardsStore = {
   /** Which side cards show first; persisted alongside the deck. */
   front: CardFront;
   /**
+   * The side the last quiz led with (`null` before the first quiz). Each new
+   * quiz leads with the opposite side; retry rounds and mid-session direction
+   * flips don't move it — only starting a fresh quiz does.
+   */
+  quizFront: CardFront | null;
+  /**
    * Per-word study stats (total successes and current streak), keyed by card
    * id. Drives the streak-weighted quiz selection on the study screen.
    */
   stats: CardStats;
   /** Change which side leads, persisting the choice. */
   setFront: (front: CardFront) => void;
+  /** Record the side a freshly started quiz leads with, persisting it. */
+  setQuizFront: (front: CardFront) => void;
   /** Replace the current deck with a freshly parsed set of cards. */
   loadCards: (cards: Flashcard[]) => void;
   /** Append freshly imported cards to the current deck, keeping what's there. */
@@ -132,6 +142,8 @@ function isEmptyDeck(deck: Deck): boolean {
 export function FlashcardsProvider({ children }: { children: React.ReactNode }) {
   const [deck, setDeck] = useState<Deck>(EMPTY_DECK);
   const [front, setFront] = useState<CardFront>("japanese");
+  // The side the last quiz led with; null until the first quiz ever starts.
+  const [quizFront, setQuizFront] = useState<CardFront | null>(null);
   // Per-word study stats (total successes and current streak), keyed by card id.
   const [cardStats, setCardStats] = useState<CardStats>({});
   const [hydrated, setHydrated] = useState(false);
@@ -147,11 +159,13 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       loadStoredDeck(),
       loadStoredFront(),
       loadStoredCardStats(),
-    ]).then(([storedDeck, storedFront, storedStats]) => {
+      loadStoredQuizFront(),
+    ]).then(([storedDeck, storedFront, storedStats, storedQuizFront]) => {
       if (cancelled) return;
       if (storedDeck) setDeck(storedDeck);
       if (storedFront) setFront(storedFront);
       setCardStats(storedStats);
+      if (storedQuizFront) setQuizFront(storedQuizFront);
       setHydrated(true);
     });
     return () => {
@@ -172,6 +186,13 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
     if (!hydrated) return;
     void saveFront(front);
   }, [front, hydrated]);
+
+  // Persist the last quiz's leading side. `null` means no quiz has ever run;
+  // there's nothing to record until the first one starts.
+  useEffect(() => {
+    if (!hydrated || quizFront === null) return;
+    void saveQuizFront(quizFront);
+  }, [quizFront, hydrated]);
 
   // Persist the per-word stats the same way; an empty map clears the document
   // rather than leaving an empty one behind (mirrors the deck).
@@ -305,8 +326,10 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       tags: deck.tags,
       collectionTags: deck.collectionTags,
       front,
+      quizFront,
       stats: cardStats,
       setFront,
+      setQuizFront,
       loadCards,
       addCards,
       clear,
@@ -329,6 +352,7 @@ export function FlashcardsProvider({ children }: { children: React.ReactNode }) 
       hydrated,
       deck,
       front,
+      quizFront,
       cardStats,
       loadCards,
       addCards,

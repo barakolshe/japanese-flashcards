@@ -28,6 +28,7 @@ const COLLECTION = "flashcards";
 const DECK_DOC = "deck";
 const FRONT_DOC = "front";
 const STATS_DOC = "stats";
+const QUIZ_FRONT_DOC = "quizFront";
 
 function deckRef() {
   return doc(getDb(), COLLECTION, DECK_DOC);
@@ -39,6 +40,10 @@ function frontRef() {
 
 function statsRef() {
   return doc(getDb(), COLLECTION, STATS_DOC);
+}
+
+function quizFrontRef() {
+  return doc(getDb(), COLLECTION, QUIZ_FRONT_DOC);
 }
 
 function isFlashcard(value: unknown): value is Flashcard {
@@ -227,6 +232,31 @@ export async function saveFront(front: CardFront): Promise<void> {
     await setDoc(frontRef(), { front });
   } catch {
     // The preference just won't stick; not worth interrupting the user.
+  }
+}
+
+/**
+ * Read the side the last quiz led with, or `null` if no quiz has run yet (or
+ * the stored value is invalid). Each new quiz leads with the opposite side.
+ */
+export async function loadStoredQuizFront(): Promise<CardFront | null> {
+  let value: unknown;
+  try {
+    const snap = await getDoc(quizFrontRef());
+    if (!snap.exists()) return null;
+    value = snap.data().front;
+  } catch {
+    return null;
+  }
+  return value === "japanese" || value === "english" ? value : null;
+}
+
+/** Persist the side a freshly started quiz leads with, for the next quiz to flip. */
+export async function saveQuizFront(front: CardFront): Promise<void> {
+  try {
+    await setDoc(quizFrontRef(), { front });
+  } catch {
+    // The alternation just won't stick this time; not worth interrupting.
   }
 }
 

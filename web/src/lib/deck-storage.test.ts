@@ -44,9 +44,11 @@ const {
   loadStoredCardStats,
   loadStoredDeck,
   loadStoredFront,
+  loadStoredQuizFront,
   saveCardStats,
   saveDeck,
   saveFront,
+  saveQuizFront,
 } = await import("./deck-storage");
 
 const sampleDeck: Deck = {
@@ -384,6 +386,31 @@ describe("clearStoredCardStats", () => {
   });
 });
 
+describe("saveQuizFront / loadStoredQuizFront", () => {
+  it("round-trips the last quiz's leading side", async () => {
+    await saveQuizFront("english");
+    expect(await loadStoredQuizFront()).toBe("english");
+    await saveQuizFront("japanese");
+    expect(await loadStoredQuizFront()).toBe("japanese");
+  });
+
+  it("returns null when no quiz has ever been recorded", async () => {
+    expect(await loadStoredQuizFront()).toBeNull();
+  });
+
+  it("discards an unrecognized value", async () => {
+    mocks.store.set("flashcards/quizFront", { front: "backwards" });
+    expect(await loadStoredQuizFront()).toBeNull();
+  });
+
+  it("leaves the saved 'show first' direction untouched", async () => {
+    await saveFront("japanese");
+    await saveQuizFront("english");
+    expect(await loadStoredFront()).toBe("japanese");
+    expect(await loadStoredQuizFront()).toBe("english");
+  });
+});
+
 describe("when Firestore is unavailable", () => {
   beforeEach(() => {
     // Simulate a missing config / offline / denied-by-rules situation: every
@@ -397,10 +424,12 @@ describe("when Firestore is unavailable", () => {
     await expect(loadStoredDeck()).resolves.toBeNull();
     await expect(loadStoredFront()).resolves.toBeNull();
     await expect(loadStoredCardStats()).resolves.toEqual({});
+    await expect(loadStoredQuizFront()).resolves.toBeNull();
     await expect(saveDeck(sampleDeck)).resolves.toBeUndefined();
     await expect(clearStoredDeck()).resolves.toBeUndefined();
     await expect(saveFront("english")).resolves.toBeUndefined();
     await expect(saveCardStats({})).resolves.toBeUndefined();
     await expect(clearStoredCardStats()).resolves.toBeUndefined();
+    await expect(saveQuizFront("english")).resolves.toBeUndefined();
   });
 });
