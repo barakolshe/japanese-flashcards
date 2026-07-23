@@ -51,7 +51,9 @@ function isFlashcard(value: unknown): value is Flashcard {
     typeof card.collection === "string" &&
     (card.pronunciation === undefined ||
       typeof card.pronunciation === "string") &&
-    (card.sentence === undefined || typeof card.sentence === "string")
+    (card.sentence === undefined || typeof card.sentence === "string") &&
+    (card.sentenceTranslation === undefined ||
+      typeof card.sentenceTranslation === "string")
   );
 }
 

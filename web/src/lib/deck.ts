@@ -253,6 +253,7 @@ export function duplicateCollection(deck: Deck, name: string): DuplicateResult {
         newName,
         card.pronunciation,
         card.sentence,
+        card.sentenceTranslation,
       ),
     );
 

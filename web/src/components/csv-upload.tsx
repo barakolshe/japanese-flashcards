@@ -76,7 +76,8 @@ export function CsvUpload() {
             <span className="block text-sm text-muted">
               One row per card. Columns:{" "}
               <code className="font-mono text-ink">
-                japanese, english, pronunciation, collection, sentence
+                japanese, english, pronunciation, collection, sentence,
+                translation
               </code>
             </span>
           </span>
