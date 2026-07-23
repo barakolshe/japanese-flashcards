@@ -28,7 +28,7 @@ type StudySetupProps = {
 const EXPORT_FILENAME = "flashcards.csv";
 
 /** How many words a quiz draws from the (filtered) deck. */
-const QUIZ_SIZE = 50;
+const QUIZ_SIZE = 30;
 
 /**
  * Download the deck as a CSV file. A leading BOM keeps the Japanese readable
@@ -60,7 +60,8 @@ export function StudySetup({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const importer = useCsvImport(addCards);
   // Bumped on every quiz start so each draw gets a fresh session key, even when
-  // the same cards happen to be sampled again (e.g. a deck of under 50 words).
+  // the same cards happen to be sampled again (e.g. a deck smaller than the
+  // quiz size).
   const quizNonce = useRef(0);
 
   const counts = useMemo(() => {
