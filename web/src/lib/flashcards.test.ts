@@ -47,6 +47,27 @@ describe("createCard", () => {
       "sentence",
     );
   });
+
+  it("keeps a trimmed sentence translation when one is given", () => {
+    const card = createCard(
+      "猫",
+      "cat",
+      "Animals",
+      "neko",
+      "猫がいます。",
+      " There is a cat. ",
+    );
+    expect(card.sentenceTranslation).toBe("There is a cat.");
+  });
+
+  it("omits the sentence translation key when absent or blank", () => {
+    expect(
+      createCard("猫", "cat", "Animals", "neko", "猫がいます。"),
+    ).not.toHaveProperty("sentenceTranslation");
+    expect(
+      createCard("猫", "cat", "Animals", "neko", "猫がいます。", "  "),
+    ).not.toHaveProperty("sentenceTranslation");
+  });
 });
 
 describe("parseFlashcardsCsv", () => {
@@ -161,6 +182,39 @@ describe("parseFlashcardsCsv", () => {
       pronunciation: "neko",
       collection: "Animals",
       sentence: "猫がいます。",
+    });
+  });
+
+  it("reads a translation column when the header names one", () => {
+    const csv = [
+      "japanese,english,sentence,translation",
+      "猫,cat,猫がいます。,There is a cat.",
+      "犬,dog,犬がいます。,",
+    ].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards[0].sentenceTranslation).toBe("There is a cat.");
+    // A blank translation cell leaves the key off rather than storing "".
+    expect(result.cards[1]).not.toHaveProperty("sentenceTranslation");
+  });
+
+  it("reads the translation positionally as the sixth column", () => {
+    const csv = ["猫,cat,neko,Animals,猫がいます。,There is a cat."].join("\n");
+
+    const result = parseFlashcardsCsv(csv);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.cards[0]).toMatchObject({
+      japanese: "猫",
+      english: "cat",
+      pronunciation: "neko",
+      collection: "Animals",
+      sentence: "猫がいます。",
+      sentenceTranslation: "There is a cat.",
     });
   });
 
@@ -323,15 +377,16 @@ describe("serializeFlashcardsCsv", () => {
         collection: "Animals",
         pronunciation: "inu",
         sentence: "犬がいます。",
+        sentenceTranslation: "There is a dog.",
       },
     ]);
 
     expect(csv).toBe(
       [
-        "japanese,english,pronunciation,collection,sentence",
-        // A card with no pronunciation or sentence leaves those cells empty.
-        "猫,cat,,Animals,",
-        "犬,dog,inu,Animals,犬がいます。",
+        "japanese,english,pronunciation,collection,sentence,translation",
+        // A card with no value for an optional column leaves that cell empty.
+        "猫,cat,,Animals,,",
+        "犬,dog,inu,Animals,犬がいます。,There is a dog.",
       ].join("\n"),
     );
   });
@@ -358,6 +413,7 @@ describe("serializeFlashcardsCsv", () => {
         collection: "Animals",
         pronunciation: "neko",
         sentence: "猫がいます。",
+        sentenceTranslation: "There is a cat.",
       },
       {
         id: "2",
@@ -373,30 +429,27 @@ describe("serializeFlashcardsCsv", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.skipped).toEqual([]);
-    expect(
-      result.cards.map(
-        ({ japanese, english, collection, pronunciation, sentence }) => ({
-          japanese,
-          english,
-          collection,
-          pronunciation,
-          sentence,
-        }),
-      ),
-    ).toEqual(
-      cards.map(({ japanese, english, collection, pronunciation, sentence }) => ({
-        japanese,
-        english,
-        collection,
-        pronunciation,
-        sentence,
-      })),
-    );
+    const roundTripped = ({
+      japanese,
+      english,
+      collection,
+      pronunciation,
+      sentence,
+      sentenceTranslation,
+    }: (typeof cards)[number]) => ({
+      japanese,
+      english,
+      collection,
+      pronunciation,
+      sentence,
+      sentenceTranslation,
+    });
+    expect(result.cards.map(roundTripped)).toEqual(cards.map(roundTripped));
   });
 
   it("produces an empty deck as a header-only file", () => {
     expect(serializeFlashcardsCsv([])).toBe(
-      "japanese,english,pronunciation,collection,sentence",
+      "japanese,english,pronunciation,collection,sentence,translation",
     );
   });
 });

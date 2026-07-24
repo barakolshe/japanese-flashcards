@@ -6,7 +6,7 @@ import { useFlashcards } from "@/lib/flashcards-store";
 import { selectQuizDeck } from "@/lib/card-stats";
 import { selectDeckByCollections } from "@/lib/study";
 import { useCsvImport } from "@/lib/use-csv-import";
-import type { CardFront } from "@/lib/study-direction";
+import { oppositeFront, type CardFront } from "@/lib/study-direction";
 import type { Tag } from "@/lib/deck";
 import type { StudyTarget } from "./deck-study";
 import { ImportNotice } from "./csv-upload";
@@ -28,7 +28,7 @@ type StudySetupProps = {
 const EXPORT_FILENAME = "flashcards.csv";
 
 /** How many words a quiz draws from the (filtered) deck. */
-const QUIZ_SIZE = 50;
+const QUIZ_SIZE = 30;
 
 /**
  * Download the deck as a CSV file. A leading BOM keeps the Japanese readable
@@ -54,13 +54,24 @@ export function StudySetup({
   onOrganize,
   onViewList,
 }: StudySetupProps) {
-  const { cards, collections, folders, tags, collectionTags, stats, addCards, clear } =
-    useFlashcards();
+  const {
+    cards,
+    collections,
+    folders,
+    tags,
+    collectionTags,
+    stats,
+    quizFront,
+    setQuizFront,
+    addCards,
+    clear,
+  } = useFlashcards();
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const importer = useCsvImport(addCards);
   // Bumped on every quiz start so each draw gets a fresh session key, even when
-  // the same cards happen to be sampled again (e.g. a deck of under 50 words).
+  // the same cards happen to be sampled again (e.g. a deck smaller than the
+  // quiz size).
   const quizNonce = useRef(0);
 
   const counts = useMemo(() => {
@@ -138,6 +149,13 @@ export function StudySetup({
 
   const startQuiz = () => {
     quizNonce.current += 1;
+    // Each quiz leads with the opposite side of the previous quiz (the side it
+    // started with — retry rounds and mid-session flips don't count). The very
+    // first quiz just uses the current "show first" choice. The global setting
+    // follows along so the session and its direction toggle stay in sync.
+    const nextFront = quizFront ? oppositeFront(quizFront) : front;
+    setQuizFront(nextFront);
+    if (nextFront !== front) onFrontChange(nextFront);
     onStart({
       kind: "quiz",
       cards: selectQuizDeck(quizPool, stats, QUIZ_SIZE, Math.random),

@@ -328,7 +328,7 @@ describe("duplicateCollection", () => {
     expect(copy?.pronunciation).toBe("neko");
   });
 
-  it("carries each card's example sentence onto the copy", () => {
+  it("carries each card's example sentence and translation onto the copy", () => {
     const deck = mk(
       [
         {
@@ -337,6 +337,7 @@ describe("duplicateCollection", () => {
           english: "cat",
           collection: "Animals",
           sentence: "猫がいます。",
+          sentenceTranslation: "There is a cat.",
         },
       ],
       ["Animals"],
@@ -347,6 +348,7 @@ describe("duplicateCollection", () => {
     if (!result.ok) return;
     const copy = result.deck.cards.find((c) => c.collection === "Animals copy");
     expect(copy?.sentence).toBe("猫がいます。");
+    expect(copy?.sentenceTranslation).toBe("There is a cat.");
   });
 
   it("files the copy in the same folder as the source, right after it", () => {

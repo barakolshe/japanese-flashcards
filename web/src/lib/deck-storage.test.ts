@@ -44,9 +44,11 @@ const {
   loadStoredCardStats,
   loadStoredDeck,
   loadStoredFront,
+  loadStoredQuizFront,
   saveCardStats,
   saveDeck,
   saveFront,
+  saveQuizFront,
 } = await import("./deck-storage");
 
 const sampleDeck: Deck = {
@@ -186,6 +188,50 @@ describe("loadStoredDeck validation", () => {
     });
     const deck = await loadStoredDeck();
     expect(deck?.cards[0].sentence).toBe("猫がいます。");
+  });
+
+  it("loads a deck whose cards carry an optional sentence translation", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          {
+            id: "1",
+            japanese: "猫",
+            english: "cat",
+            collection: "Animals",
+            sentence: "猫がいます。",
+            sentenceTranslation: "There is a cat.",
+          },
+        ],
+        collections: ["Animals"],
+        folders: [],
+        tags: [],
+        collectionTags: {},
+      },
+    });
+    const deck = await loadStoredDeck();
+    expect(deck?.cards[0].sentenceTranslation).toBe("There is a cat.");
+  });
+
+  it("discards a deck whose card sentence translation isn't a string", async () => {
+    mocks.store.set(DECK_PATH, {
+      version: 2,
+      deck: {
+        cards: [
+          {
+            id: "1",
+            japanese: "猫",
+            english: "cat",
+            collection: "Animals",
+            sentenceTranslation: 5,
+          },
+        ],
+        collections: ["Animals"],
+        folders: [],
+      },
+    });
+    expect(await loadStoredDeck()).toBeNull();
   });
 
   it("discards a deck whose card sentence isn't a string", async () => {
@@ -340,6 +386,31 @@ describe("clearStoredCardStats", () => {
   });
 });
 
+describe("saveQuizFront / loadStoredQuizFront", () => {
+  it("round-trips the last quiz's leading side", async () => {
+    await saveQuizFront("english");
+    expect(await loadStoredQuizFront()).toBe("english");
+    await saveQuizFront("japanese");
+    expect(await loadStoredQuizFront()).toBe("japanese");
+  });
+
+  it("returns null when no quiz has ever been recorded", async () => {
+    expect(await loadStoredQuizFront()).toBeNull();
+  });
+
+  it("discards an unrecognized value", async () => {
+    mocks.store.set("flashcards/quizFront", { front: "backwards" });
+    expect(await loadStoredQuizFront()).toBeNull();
+  });
+
+  it("leaves the saved 'show first' direction untouched", async () => {
+    await saveFront("japanese");
+    await saveQuizFront("english");
+    expect(await loadStoredFront()).toBe("japanese");
+    expect(await loadStoredQuizFront()).toBe("english");
+  });
+});
+
 describe("when Firestore is unavailable", () => {
   beforeEach(() => {
     // Simulate a missing config / offline / denied-by-rules situation: every
@@ -353,10 +424,12 @@ describe("when Firestore is unavailable", () => {
     await expect(loadStoredDeck()).resolves.toBeNull();
     await expect(loadStoredFront()).resolves.toBeNull();
     await expect(loadStoredCardStats()).resolves.toEqual({});
+    await expect(loadStoredQuizFront()).resolves.toBeNull();
     await expect(saveDeck(sampleDeck)).resolves.toBeUndefined();
     await expect(clearStoredDeck()).resolves.toBeUndefined();
     await expect(saveFront("english")).resolves.toBeUndefined();
     await expect(saveCardStats({})).resolves.toBeUndefined();
     await expect(clearStoredCardStats()).resolves.toBeUndefined();
+    await expect(saveQuizFront("english")).resolves.toBeUndefined();
   });
 });
